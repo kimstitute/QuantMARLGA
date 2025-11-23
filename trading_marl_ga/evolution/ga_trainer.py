@@ -509,12 +509,9 @@ class GATrainer:
             else:
                 print(f"  [SKIP] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.BATCH_SIZE})")
             
-            # 3. 진화 (GA)
-            print(f"\n[3/4] 진화 (Selection, Crossover, Mutation)")
-            stats = self.evolve_generation()
-            
-            # 4. Injection: MARL 팀을 EA Population의 Worst와 교체
-            print(f"\n[4/4] Injection: MARL 팀을 Population에 주입")
+            # 3. Injection: MARL 팀을 EA Population의 Worst와 교체
+            # 중요: 진화 전에 먼저 injection! (진화 후에는 새 팀들의 fitness가 None)
+            print(f"\n[3/4] Injection: MARL 팀을 Population에 주입")
             
             # EA Population fitness로 worst 찾기
             fitnesses = [system.fitness if system.fitness is not None else -np.inf 
@@ -539,6 +536,10 @@ class GATrainer:
             
             print(f"  [OK] 교체 완료")
             print(f"  [OK] 다음 세대 MARL 팀 준비 (Best #{best_idx} 복제)")
+            
+            # 4. 진화 (GA) - Injection 이후에 수행
+            print(f"\n[4/4] 진화 (Selection, Crossover, Mutation)")
+            stats = self.evolve_generation()
             
             # 세대 통계 (Phase 1과 Phase 2 공통)
             fitnesses = [s.fitness if s.fitness is not None else -np.inf for s in self.population]

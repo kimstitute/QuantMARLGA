@@ -108,13 +108,19 @@ class BaseAgent:
         next_obs = batch[f'{agent_prefix}_next_obs']
         dones = batch['done']
         
+        # Shape 확인 및 수정 (broadcasting 문제 방지)
+        if rewards.dim() == 1:
+            rewards = rewards.unsqueeze(1)  # (batch_size,) → (batch_size, 1)
+        if dones.dim() == 1:
+            dones = dones.unsqueeze(1)  # (batch_size,) → (batch_size, 1)
+        
         # ============================================
         # Critic Update (with Mixed Precision if enabled)
         # ============================================
         with torch.no_grad():
             # TD target 계산
-            next_values = self.critic_target(next_obs)
-            td_target = rewards + (1 - dones) * config.GAMMA * next_values
+            next_values = self.critic_target(next_obs)  # (batch_size, 1)
+            td_target = rewards + (1 - dones) * config.GAMMA * next_values  # (batch_size, 1)
         
         # Mixed Precision Training (Colab 최적화)
         if self.use_amp:
