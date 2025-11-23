@@ -270,6 +270,11 @@ class BacktestEnv:
         # 수수료만 추가로 차감
         self.cash = remaining_cash - trade_costs
         
+        # 거래 직후 포트폴리오 가치 업데이트 (당일 가격 기준)
+        stock_value_after_trade = (self.positions * current_prices).sum()
+        self.portfolio_value = self.cash + stock_value_after_trade
+        # portfolio_history는 다음 날 가격 기준으로 추가될 것임
+        
         # 다음 날로 이동
         self.current_day += 1
         done = (self.current_day >= self.n_days - 1)
@@ -296,7 +301,7 @@ class BacktestEnv:
                 (self.portfolio_history[-2] + 1e-8)
             )
             
-            # 샤프 비율 (최근 N일 기반)
+            # 샤프 비율 (최근 N일 기준)
             recent_window = min(20, len(self.portfolio_history) - 1)
             recent_returns = np.diff(self.portfolio_history[-recent_window:]) / np.array(self.portfolio_history[-recent_window:-1])
             if len(recent_returns) > 1 and recent_returns.std() > 0:
@@ -304,7 +309,7 @@ class BacktestEnv:
             else:
                 sharpe_ratio = 0.0
             
-            # 최대 낙폭 (최근 N일 기반)
+            # 최대 낙폭 (최근 N일 기준)
             recent_values = np.array(self.portfolio_history[-recent_window:])
             running_max = np.maximum.accumulate(recent_values)
             drawdowns = (recent_values - running_max) / (running_max + 1e-8)
@@ -326,7 +331,10 @@ class BacktestEnv:
                 }
             )
         else:
-            # 에피소드 종료
+            # 에피소드 종료 - 변수 초기화
+            portfolio_return = 0.0
+            sharpe_ratio = 0.0
+            max_drawdown = 0.0
             rewards = {
                 'value_reward': 0.0,
                 'quality_reward': 0.0,
@@ -342,9 +350,9 @@ class BacktestEnv:
             'portfolio_value': self.portfolio_value,
             'day': self.current_day,
             'trade_costs': trade_costs,
-            'portfolio_return': portfolio_return if not done else 0.0,
-            'sharpe_ratio': sharpe_ratio if not done else 0.0,
-            'max_drawdown': max_drawdown if not done else 0.0,
+            'portfolio_return': portfolio_return,
+            'sharpe_ratio': sharpe_ratio,
+            'max_drawdown': max_drawdown,
         }
         
         return next_obs, rewards, done, info
