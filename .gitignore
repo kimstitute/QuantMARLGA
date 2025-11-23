@@ -1,0 +1,146 @@
+# Project documentation (internal only)
+1.md
+2.md
+3.md
+4.md
+5.md
+RACE.md
+CHANGELOG_PARALLEL.md
+IMPLEMENTATION_STATUS.md
+
+# Reference materials
+src/
+.src/
+*.pdf
+
+# ========================================
+# Environment & Secrets
+# ========================================
+.env
+.env.*
+trading_marl_ga/.env
+*.key
+
+# ========================================
+# Python
+# ========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# ========================================
+# Data & Cache
+# ========================================
+# Data cache
+trading_marl_ga/data/cache/
+data/cache/
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+docs_cache/
+
+# Datasets
+*.csv
+!requirements.txt
+
+# ========================================
+# Models & Checkpoints
+# ========================================
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.weights
+
+# ========================================
+# Logs & Outputs
+# ========================================
+logs/
+*.log
+*.out
+*.txt
+!requirements.txt
+
+# ========================================
+# Jupyter Notebook
+# ========================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ========================================
+# IDE & Editors
+# ========================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Cursor
+.cursor/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ========================================
+# OS
+# ========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ========================================
+# Testing & Coverage
+# ========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ========================================
+# Temporary files
+# ========================================
+*.tmp
+*.bak
+*.swp
+*.swo
+*~

@@ -1,0 +1,549 @@
+"""
+Genetic Algorithm Trainer
+
+RACE 논문 기반 GA + MARL 하이브리드 학습
+- Phase 1 (세대 1-30): Pure GA
+- Phase 2 (세대 31-100): GA + RL Fine-tuning
+"""
+
+import numpy as np
+import copy
+from tqdm import tqdm
+from agents.multi_agent_system import MultiAgentSystem
+from environment.backtest_env import BacktestEnv
+from utils.replay_buffer import SharedReplayBuffer
+from config import config
+
+
+class GATrainer:
+    """
+    Genetic Algorithm Trainer for Multi-Agent Systems
+    
+    RACE 논문의 핵심:
+    1. Agent-level Crossover: 에이전트 단위로 교차
+    2. Elitism: 최고 성능 보존
+    3. Hybrid Learning: GA로 탐색 + RL로 착취
+    """
+    
+    def __init__(self, population_size=None, n_generations=None, 
+                 env_n_days=200, mutation_prob=None, mutation_alpha=None):
+        """
+        Args:
+            population_size (int): Population 크기 (기본: config.POPULATION_SIZE)
+            n_generations (int): 총 세대 수 (기본: config.N_GENERATIONS)
+            env_n_days (int): 백테스트 기간 (일)
+            mutation_prob (float): 돌연변이 확률
+            mutation_alpha (float): 돌연변이 강도
+        """
+        self.population_size = population_size or config.POPULATION_SIZE
+        self.n_generations = n_generations or config.N_GENERATIONS
+        self.env_n_days = env_n_days
+        self.mutation_prob = mutation_prob or config.MUTATION_PROB
+        self.mutation_alpha = mutation_alpha or config.MUTATION_ALPHA
+        
+        # Population 초기화
+        print(f"\n{'='*60}")
+        print(f"GA Trainer 초기화")
+        print(f"{'='*60}")
+        print(f"Population 크기: {self.population_size}")
+        print(f"세대 수: {self.n_generations}")
+        print(f"백테스트 기간: {self.env_n_days}일")
+        print(f"돌연변이 확률: {self.mutation_prob}")
+        print(f"돌연변이 강도: {self.mutation_alpha}")
+        
+        # EA Population (n개)
+        self.population = [
+            MultiAgentSystem(system_id=i) 
+            for i in range(self.population_size)
+        ]
+        print(f"[OK] EA Population 생성: {len(self.population)}개")
+        
+        # MARL 팀 (1개, 별도)
+        self.marl_team = MultiAgentSystem(system_id=-1)  # -1: MARL 팀 표시
+        print(f"[OK] MARL 팀 생성: 1개")
+        print(f"[OK] 총 팀 수: {len(self.population) + 1}개")
+        
+        # 백테스트 환경 (재사용)
+        self.env = BacktestEnv(n_days=self.env_n_days)
+        print(f"[OK] 백테스트 환경 준비 완료")
+        
+        # Shared Replay Buffer (RACE 방식: 모든 팀의 경험 공유)
+        self.shared_replay_buffer = SharedReplayBuffer(capacity=config.BUFFER_CAPACITY)
+        print(f"[OK] Shared Replay Buffer 생성 (용량: {config.BUFFER_CAPACITY})")
+        
+        # 진화 기록
+        self.fitness_history = []  # 세대별 최고/평균/최저 fitness
+        self.best_system = None
+        self.best_fitness = -np.inf
+        
+        print(f"{'='*60}\n")
+    
+    def evaluate_fitness(self, system, verbose=False):
+        """
+        시스템의 Fitness 평가 (백테스트 실행)
+        
+        Args:
+            system (MultiAgentSystem): 평가할 시스템
+            verbose (bool): 상세 출력 여부
+        
+        Returns:
+            float: Fitness (Sharpe Ratio)
+        """
+        obs = self.env.reset()
+        done = False
+        step_count = 0
+        
+        while not done:
+            # 행동 선택
+            actions = system.act(obs)
+            
+            # 환경 진행
+            next_obs, rewards, done, info = self.env.step(actions)
+            step_count += 1
+            
+            if not done:
+                obs = next_obs
+        
+        # 성과 지표 계산
+        metrics = self.env.get_performance_metrics()
+        
+        # Fitness = Sharpe Ratio (목표 지표)
+        fitness = metrics['sharpe_ratio']
+        
+        if verbose:
+            print(f"  Fitness: {fitness:.4f} (Sharpe Ratio)")
+            print(f"  총 수익률: {metrics['total_return']*100:.2f}%")
+            print(f"  최대 낙폭: {metrics['max_drawdown']*100:.2f}%")
+            print(f"  승률: {metrics['win_rate']*100:.2f}%")
+        
+        return fitness
+    
+    def evaluate_population(self, verbose=False):
+        """
+        전체 Population의 Fitness 평가
+        
+        Args:
+            verbose (bool): 진행 상황 출력 여부
+        
+        Returns:
+            list: 각 시스템의 fitness
+        """
+        fitnesses = []
+        
+        iterator = tqdm(self.population, desc="Fitness 평가") if verbose else self.population
+        
+        for i, system in enumerate(iterator):
+            fitness = self.evaluate_fitness(system, verbose=False)
+            system.fitness = fitness
+            fitnesses.append(fitness)
+            
+            if not verbose:
+                # 간단한 진행 상황
+                if (i + 1) % 5 == 0:
+                    print(f"  [{i+1}/{len(self.population)}] Fitness: {fitness:.4f}")
+        
+        return fitnesses
+    
+    def tournament_selection(self, tournament_size=3):
+        """
+        Tournament Selection
+        
+        Args:
+            tournament_size (int): 토너먼트 크기
+        
+        Returns:
+            MultiAgentSystem: 선택된 시스템
+        """
+        # 랜덤하게 tournament_size개 선택
+        candidates = np.random.choice(self.population, size=tournament_size, replace=False)
+        
+        # 가장 높은 fitness를 가진 시스템 반환
+        best = max(candidates, key=lambda x: x.fitness)
+        
+        return best
+    
+    def agent_level_crossover(self, parent1, parent2):
+        """
+        Agent-level Crossover (RACE 핵심)
+        
+        부모 2개에서 각 에이전트를 독립적으로 선택하여 자식 생성
+        
+        Args:
+            parent1 (MultiAgentSystem): 부모 1
+            parent2 (MultiAgentSystem): 부모 2
+        
+        Returns:
+            MultiAgentSystem: 자식 시스템
+        """
+        child = MultiAgentSystem()
+        
+        # 각 에이전트를 독립적으로 선택 (50% 확률)
+        if np.random.rand() < 0.5:
+            child.value_agent = parent1.value_agent.clone()
+        else:
+            child.value_agent = parent2.value_agent.clone()
+        
+        if np.random.rand() < 0.5:
+            child.quality_agent = parent1.quality_agent.clone()
+        else:
+            child.quality_agent = parent2.quality_agent.clone()
+        
+        if np.random.rand() < 0.5:
+            child.portfolio_agent = parent1.portfolio_agent.clone()
+        else:
+            child.portfolio_agent = parent2.portfolio_agent.clone()
+        
+        if np.random.rand() < 0.5:
+            child.hedging_agent = parent1.hedging_agent.clone()
+        else:
+            child.hedging_agent = parent2.hedging_agent.clone()
+        
+        return child
+    
+    def evolve_generation(self):
+        """
+        1세대 진화
+        
+        1. Elitism: 상위 10% 보존
+        2. Selection: Tournament Selection
+        3. Crossover: Agent-level
+        4. Mutation: Gaussian Noise
+        
+        Returns:
+            dict: 세대 통계 (최고/평균/최저 fitness)
+        """
+        # 현재 세대 Fitness 평가
+        fitnesses = [system.fitness for system in self.population]
+        
+        # Elitism: 상위 10% 보존
+        n_elite = max(1, int(self.population_size * 0.1))
+        elite_indices = np.argsort(fitnesses)[-n_elite:]
+        elites = [self.population[i].clone() for i in elite_indices]
+        
+        # 새로운 Population 생성
+        new_population = elites.copy()
+        
+        # 나머지는 Selection + Crossover + Mutation
+        while len(new_population) < self.population_size:
+            # Selection
+            parent1 = self.tournament_selection()
+            parent2 = self.tournament_selection()
+            
+            # Crossover
+            child = self.agent_level_crossover(parent1, parent2)
+            
+            # Mutation
+            if np.random.rand() < self.mutation_prob:
+                child.mutate(alpha=self.mutation_alpha)
+            
+            new_population.append(child)
+        
+        # Population 교체
+        self.population = new_population[:self.population_size]
+        
+        # 통계
+        stats = {
+            'max_fitness': np.max(fitnesses),
+            'mean_fitness': np.mean(fitnesses),
+            'min_fitness': np.min(fitnesses),
+            'std_fitness': np.std(fitnesses)
+        }
+        
+        # 최고 시스템 업데이트
+        if stats['max_fitness'] > self.best_fitness:
+            self.best_fitness = stats['max_fitness']
+            best_idx = np.argmax(fitnesses)
+            self.best_system = self.population[best_idx].clone()
+        
+        return stats
+    
+    def rollout_and_evaluate(self, include_marl=True, verbose=False):
+        """
+        Fitness 평가 + 경험 수집을 동시에 수행 (효율 최적화)
+        
+        한 번의 백테스트로:
+        1. Fitness 측정 (Sharpe Ratio)
+        2. 경험 수집 (Shared Buffer에 저장)
+        
+        EA Population(n개) + MARL 팀(1개) = 총 n+1개 팀 모두 rollout
+        
+        Args:
+            include_marl (bool): MARL 팀 포함 여부
+            verbose (bool): 상세 출력
+        
+        Returns:
+            int: 수집된 transition 수
+        """
+        initial_buffer_size = len(self.shared_replay_buffer)
+        
+        # 1. EA Population rollout + fitness 측정 (n개)
+        for i, system in enumerate(self.population):
+            obs = self.env.reset()
+            done = False
+            
+            while not done:
+                actions = system.act(obs)
+                next_obs, rewards, done, info = self.env.step(actions)
+                
+                # Shared buffer에 저장
+                if not done:
+                    transition = {
+                        'value_obs': obs['value_obs'],
+                        'value_action': actions['value_scores'],
+                        'value_reward': rewards['value_reward'],
+                        'value_next_obs': next_obs['value_obs'],
+                        
+                        'quality_obs': obs['quality_obs'],
+                        'quality_action': actions['quality_scores'],
+                        'quality_reward': rewards['quality_reward'],
+                        'quality_next_obs': next_obs['quality_obs'],
+                        
+                        'portfolio_obs': obs['portfolio_obs'],
+                        'portfolio_action': actions['portfolio_weights'],
+                        'portfolio_reward': rewards['portfolio_reward'],
+                        'portfolio_next_obs': next_obs['portfolio_obs'],
+                        
+                        'hedging_obs': obs['hedging_obs'],
+                        'hedging_action': actions['hedge_ratios'],
+                        'hedging_reward': rewards['hedging_reward'],
+                        'hedging_next_obs': next_obs['hedging_obs'],
+                        
+                        'done': done
+                    }
+                    self.shared_replay_buffer.add(transition)
+                    obs = next_obs
+            
+            # Fitness 측정 (백테스트 종료 직후)
+            metrics = self.env.get_performance_metrics()
+            system.fitness = metrics['sharpe_ratio']
+            
+            if verbose and (i + 1) % 5 == 0:
+                print(f"    EA 팀 {i+1}/{len(self.population)} 완료 (Fitness: {system.fitness:.4f})")
+        
+        # 2. MARL 팀도 rollout + fitness 측정 (1개) ⭐ 핵심!
+        if include_marl and self.marl_team is not None:
+            obs = self.env.reset()
+            done = False
+            
+            while not done:
+                actions = self.marl_team.act(obs)
+                next_obs, rewards, done, info = self.env.step(actions)
+                
+                if not done:
+                    transition = {
+                        'value_obs': obs['value_obs'],
+                        'value_action': actions['value_scores'],
+                        'value_reward': rewards['value_reward'],
+                        'value_next_obs': next_obs['value_obs'],
+                        
+                        'quality_obs': obs['quality_obs'],
+                        'quality_action': actions['quality_scores'],
+                        'quality_reward': rewards['quality_reward'],
+                        'quality_next_obs': next_obs['quality_obs'],
+                        
+                        'portfolio_obs': obs['portfolio_obs'],
+                        'portfolio_action': actions['portfolio_weights'],
+                        'portfolio_reward': rewards['portfolio_reward'],
+                        'portfolio_next_obs': next_obs['portfolio_obs'],
+                        
+                        'hedging_obs': obs['hedging_obs'],
+                        'hedging_action': actions['hedge_ratios'],
+                        'hedging_reward': rewards['hedging_reward'],
+                        'hedging_next_obs': next_obs['hedging_obs'],
+                        
+                        'done': done
+                    }
+                    self.shared_replay_buffer.add(transition)
+                    obs = next_obs
+            
+            # MARL 팀 fitness 측정
+            metrics = self.env.get_performance_metrics()
+            self.marl_team.fitness = metrics['sharpe_ratio']
+            
+            if verbose:
+                print(f"    MARL 팀 완료 (Fitness: {self.marl_team.fitness:.4f})")
+        
+        collected = len(self.shared_replay_buffer) - initial_buffer_size
+        return collected
+    
+    def rl_train_from_shared_buffer(self, system, n_updates=50, verbose=False):
+        """
+        Shared Replay Buffer에서 RL 학습
+        
+        1개 MARL 팀이 모든 팀(EA + MARL)의 경험으로 학습
+        
+        Args:
+            system (MultiAgentSystem): 학습할 시스템
+            n_updates (int): 업데이트 횟수
+            verbose (bool): 상세 출력
+        
+        Returns:
+            MultiAgentSystem: 학습된 시스템
+        """
+        if len(self.shared_replay_buffer) < config.BATCH_SIZE:
+            if verbose:
+                print(f"    [Skip] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.BATCH_SIZE})")
+            return system
+        
+        total_losses = []
+        
+        for update_idx in range(n_updates):
+            # Shared buffer에서 샘플링
+            batch = self.shared_replay_buffer.sample(config.BATCH_SIZE)
+            
+            # 각 에이전트 업데이트
+            losses = system.update_all_from_batch(batch)
+            
+            if losses:
+                total_losses.append(losses)
+            
+            if verbose and (update_idx + 1) % 10 == 0:
+                avg_loss = np.mean([l['total'] for l in total_losses[-10:]])
+                print(f"    업데이트 {update_idx+1}/{n_updates}: Loss {avg_loss:.4f}")
+        
+        return system
+    
+    def train(self, rl_updates=10):
+        """
+        전체 학습 루프 (GA + MARL Hybrid)
+        
+        처음부터 GA + RL Hybrid 동시 수행 (RACE 논문 방식 참고)
+        
+        Args:
+            rl_updates (int): 매 세대 RL 업데이트 횟수
+        """
+        print(f"\n{'='*60}")
+        print(f"GA-MARL Hybrid 학습 시작 (처음부터 동시 수행)")
+        print(f"{'='*60}")
+        print(f"세대 수: {self.n_generations}")
+        print(f"Population: {len(self.population)}개 EA 팀 + 1개 MARL 팀")
+        print(f"RL 업데이트/세대: {rl_updates}회")
+        print(f"{'='*60}\n")
+        
+        for gen in range(1, self.n_generations + 1):
+            print(f"\n{'='*60}")
+            print(f"세대 {gen}/{self.n_generations}")
+            print(f"{'='*60}")
+            
+            # Hybrid Learning 순서 (RACE 방식 참고)
+            
+            # 1. Rollout + Fitness 평가
+            print(f"\n[1/4] Rollout + Fitness 평가: EA({len(self.population)}개) + MARL(1개)")
+            collected = self.rollout_and_evaluate(include_marl=True, verbose=False)
+            print(f"  수집된 경험: {collected}개")
+            print(f"  총 Buffer 크기: {len(self.shared_replay_buffer)}")
+            
+            # Fitness 통계
+            fitnesses = [s.fitness if s.fitness is not None else -np.inf 
+                        for s in self.population]
+            print(f"  EA Fitness: 최고={max(fitnesses):.4f}, " +
+                  f"평균={np.mean(fitnesses):.4f}, 최저={min(fitnesses):.4f}")
+            if self.marl_team and self.marl_team.fitness:
+                print(f"  MARL Fitness: {self.marl_team.fitness:.4f}")
+            
+            # 2. RL: MARL 팀 학습
+            print(f"\n[2/4] RL: MARL 팀 학습 (Shared Buffer 활용)")
+            
+            # MARL 팀을 Shared buffer에서 학습
+            if len(self.shared_replay_buffer) >= config.BATCH_SIZE:
+                self.marl_team = self.rl_train_from_shared_buffer(
+                    self.marl_team,
+                    n_updates=rl_updates,
+                    verbose=False
+                )
+                print(f"  [OK] MARL 팀 학습 완료 ({rl_updates}회 업데이트)")
+            else:
+                print(f"  [SKIP] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.BATCH_SIZE})")
+            
+            # 3. 진화 (GA)
+            print(f"\n[3/4] 진화 (Selection, Crossover, Mutation)")
+            stats = self.evolve_generation()
+            
+            # 4. Injection: MARL 팀을 EA Population의 Worst와 교체
+            print(f"\n[4/4] Injection: MARL 팀을 Population에 주입")
+            
+            # EA Population fitness로 worst 찾기
+            fitnesses = [system.fitness if system.fitness is not None else -np.inf 
+                        for system in self.population]
+            worst_idx = np.argmin(fitnesses)
+            
+            # MARL 팀 fitness는 이미 rollout에서 계산됨
+            marl_fitness = self.marl_team.fitness if self.marl_team.fitness else -np.inf
+            
+            print(f"  MARL 팀 Fitness: {marl_fitness:.4f} (RL 학습 후)")
+            print(f"  Worst 팀 (#{worst_idx}): {fitnesses[worst_idx]:.4f}")
+            
+            # Worst와 교체 (MARL 팀은 Population의 worst를 대체)
+            self.population[worst_idx] = self.marl_team.clone()
+            self.population[worst_idx].fitness = marl_fitness
+            
+            # 새로운 MARL 팀 생성 (다음 세대용)
+            # 현재 best를 복제
+            best_idx = np.argmax([s.fitness if s.fitness is not None else -np.inf 
+                                 for s in self.population])
+            self.marl_team = self.population[best_idx].clone()
+            
+            print(f"  [OK] 교체 완료")
+            print(f"  [OK] 다음 세대 MARL 팀 준비 (Best #{best_idx} 복제)")
+            
+            # 세대 통계 (Phase 1과 Phase 2 공통)
+            fitnesses = [s.fitness if s.fitness is not None else -np.inf for s in self.population]
+            valid_fitnesses = [f for f in fitnesses if f != -np.inf]
+            
+            if len(valid_fitnesses) > 0:
+                current_best = max(valid_fitnesses)
+                if self.best_fitness is None or current_best > self.best_fitness:
+                    self.best_fitness = current_best
+                    best_idx = np.argmax(fitnesses)
+                    self.best_system = self.population[best_idx].clone()
+                
+                stats = {
+                    'max_fitness': max(valid_fitnesses),
+                    'mean_fitness': np.mean(valid_fitnesses),
+                    'min_fitness': min(valid_fitnesses),
+                    'std_fitness': np.std(valid_fitnesses)
+                }
+            else:
+                stats = {
+                    'max_fitness': 0.0,
+                    'mean_fitness': 0.0,
+                    'min_fitness': 0.0,
+                    'std_fitness': 0.0
+                }
+            
+            # 진행 상황 출력
+            print(f"\n{'='*60}")
+            print(f"세대 {gen} 완료")
+            print(f"{'='*60}")
+            print(f"  최고 Fitness: {stats['max_fitness']:.4f}")
+            print(f"  평균 Fitness: {stats['mean_fitness']:.4f}")
+            print(f"  최저 Fitness: {stats['min_fitness']:.4f}")
+            print(f"  표준편차:     {stats['std_fitness']:.4f}")
+            print(f"  역대 최고:    {self.best_fitness:.4f}")
+            print(f"{'='*60}\n")
+            
+            # 기록
+            self.fitness_history.append(stats)
+        
+        print(f"\n{'='*60}")
+        print(f"학습 완료!")
+        print(f"{'='*60}")
+        print(f"역대 최고 Fitness: {self.best_fitness:.4f}")
+        
+        # 최종 평가
+        if self.best_system:
+            print(f"\n[최종 평가] 최고 성능 시스템")
+            print(f"{'='*60}")
+            fitness = self.evaluate_fitness(self.best_system, verbose=True)
+            print(f"{'='*60}\n")
+        
+        return self.best_system, self.fitness_history
+    
+    def save_best_system(self, path="checkpoints/best_system"):
+        """최고 성능 시스템 저장"""
+        if self.best_system:
+            self.best_system.save(path)
+            print(f"[OK] 최고 시스템 저장: {path}")
+        else:
+            print(f"[WARNING] 저장할 시스템이 없습니다.")
+
