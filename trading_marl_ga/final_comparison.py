@@ -13,16 +13,17 @@ print("="*80)
 print("최종 비교: QuantMARLGA vs 벤치마크")
 print("="*80)
 
-# 설정
-N_DAYS = 100
-POPULATION_SIZE = 5
-N_GENERATIONS = 10
+# 설정 (config.py에서 가져오기)
+N_DAYS = 245  # 전체 2023년 데이터 (약 245거래일)
+POPULATION_SIZE = config.POPULATION_SIZE
+N_GENERATIONS = config.N_GENERATIONS
+RL_UPDATES = config.RL_UPDATES
 
 print(f"\n[설정]")
 print(f"  백테스트 기간: {N_DAYS}일")
 print(f"  Population: {POPULATION_SIZE}개 EA 팀 + 1개 MARL 팀")
 print(f"  세대: {N_GENERATIONS}세대 (처음부터 GA+RL 동시)")
-print(f"  RL 업데이트: 10회/세대")
+print(f"  RL 업데이트: {RL_UPDATES}회/세대")
 print("="*80)
 
 # ========================================
@@ -36,12 +37,12 @@ trainer = GATrainer(
     population_size=POPULATION_SIZE,
     n_generations=N_GENERATIONS,
     env_n_days=N_DAYS,
-    mutation_prob=0.9,
-    mutation_alpha=0.2
+    mutation_prob=config.MUTATION_PROB,
+    mutation_alpha=config.MUTATION_ALPHA
 )
 
 best_system, fitness_history = trainer.train(
-    rl_updates=10  # 매 세대 RL 업데이트 횟수
+    rl_updates=RL_UPDATES  # config.py에서 가져옴
 )
 
 # 학습 결과 요약
