@@ -15,6 +15,84 @@ if config.DATA_SOURCE == "real":
     from data.market_data_manager import MarketDataManager
 
 
+def priority_integer_allocation(target_weights, prices, available_cash):
+    """
+    우선순위 기반 정수 주식 배분 (현실적 제약)
+    
+    1. 모든 종목 내림으로 시작
+    2. 남은 현금으로 목표 비중에 가깝도록 1주씩 추가
+    3. 현금을 최대한 활용하면서 목표 비중 유지
+    
+    Args:
+        target_weights (np.ndarray): 목표 비중 (n_stocks,), 합=1
+        prices (np.ndarray): 주가 (n_stocks,)
+        available_cash (float): 사용 가능한 현금
+    
+    Returns:
+        tuple: (shares, remaining_cash)
+            - shares (np.ndarray): 정수 주식 수
+            - remaining_cash (float): 남은 현금
+    """
+    n = len(target_weights)
+    
+    # 1. 목표 금액 계산
+    target_values = target_weights * available_cash
+    
+    # 2. 초기 배분 (내림)
+    shares = np.floor(target_values / (prices + 1e-8))
+    used_cash = (shares * prices).sum()
+    remaining_cash = available_cash - used_cash
+    
+    # 3. 남은 현금으로 추가 매수 (목표 비중에 가깝도록)
+    max_iterations = 1000  # 무한 루프 방지
+    for _ in range(max_iterations):
+        # 살 수 있는 종목 체크
+        can_buy = remaining_cash >= prices
+        if not np.any(can_buy):
+            break  # 더 이상 살 수 없음
+        
+        # 현재 비중 계산
+        current_values = shares * prices
+        total_value = current_values.sum()
+        if total_value < 1e-8:
+            # 아직 아무것도 안 샀으면 가장 비중 높은 것부터
+            best_idx = np.argmax(target_weights)
+            if can_buy[best_idx]:
+                shares[best_idx] += 1
+                remaining_cash -= prices[best_idx]
+            else:
+                break
+            continue
+        
+        current_weights = current_values / total_value
+        
+        # 각 종목에 1주 추가 시 비중 오차 개선도 계산
+        improvements = np.full(n, -np.inf)
+        for i in range(n):
+            if can_buy[i]:
+                # 1주 추가 시 새 비중
+                new_shares = shares.copy()
+                new_shares[i] += 1
+                new_values = new_shares * prices
+                new_total = new_values.sum()
+                new_weights = new_values / new_total
+                
+                # 전체 비중 오차 (L2 norm)
+                old_error = np.sum((current_weights - target_weights) ** 2)
+                new_error = np.sum((new_weights - target_weights) ** 2)
+                improvements[i] = old_error - new_error
+        
+        # 가장 개선도 높은 종목 매수
+        best_idx = np.argmax(improvements)
+        if improvements[best_idx] <= 0:
+            break  # 더 이상 개선 안 됨
+        
+        shares[best_idx] += 1
+        remaining_cash -= prices[best_idx]
+    
+    return shares.astype(int), remaining_cash
+
+
 class BacktestEnv:
     """
     백테스트 환경
@@ -164,19 +242,33 @@ class BacktestEnv:
         # 최종 비중으로 거래
         final_weights = actions['final_weights']
         
-        # 목표 포지션 계산 (주식 수)
-        target_values = final_weights * self.portfolio_value
-        target_positions = target_values / (current_prices + 1e-8)
+        # =============================================================
+        # 정수 주식 제약 + 현금 부족 방지 (현실적 제약)
+        # =============================================================
+        # 1. 현재 보유 주식 매도로 확보 가능한 현금
+        sell_positions = np.maximum(0, self.positions)  # 매도 가능한 주식
+        sell_value = (sell_positions * current_prices).sum()
+        available_cash = self.cash + sell_value  # 총 사용 가능 금액
         
-        # 거래 실행
+        # 2. 정수 제약 적용 (우선순위 기반)
+        target_positions, remaining_cash = priority_integer_allocation(
+            final_weights,
+            current_prices,
+            available_cash
+        )
+        
+        # 3. 거래 실행
         trades = target_positions - self.positions  # 거래량 (양수=매수, 음수=매도)
         trade_values = trades * current_prices  # 거래 금액
         trade_costs = np.abs(trade_values).sum() * config.TRANSACTION_COST  # 수수료
         
         # 포지션 및 현금 업데이트
         self.positions = target_positions
-        self.cash -= trade_values.sum()  # 매수는 현금 감소, 매도는 현금 증가
-        self.cash -= trade_costs  # 수수료 차감
+        
+        # 현금 재계산 (정수 제약 적용 후)
+        # remaining_cash는 이미 거래 후 남은 현금
+        # 수수료만 추가로 차감
+        self.cash = remaining_cash - trade_costs
         
         # 다음 날로 이동
         self.current_day += 1

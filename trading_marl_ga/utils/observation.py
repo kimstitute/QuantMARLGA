@@ -31,11 +31,11 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
         portfolio_weights (np.ndarray, optional): Portfolio Agent 출력 (n_stocks,)
     
     Returns:
-        dict: 모든 에이전트의 관측:
-            - 'value_obs': (23,)
-            - 'quality_obs': (23,)
-            - 'portfolio_obs': (56,) - value_scores, quality_scores 필요
-            - 'hedging_obs': (42,) - portfolio_weights 필요
+        dict: 모든 에이전트의 관측 (N_STOCKS=20 기준):
+            - 'value_obs': (43,) = N*2+3
+            - 'quality_obs': (43,) = N*2+3
+            - 'portfolio_obs': (106,) = N*2 + (N*3+2) + 4
+            - 'hedging_obs': (82,) = N + (N*3+2)
     """
     n_stocks = config.N_STOCKS
     

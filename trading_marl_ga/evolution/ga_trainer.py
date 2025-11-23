@@ -1,14 +1,13 @@
 """
 Genetic Algorithm Trainer
 
-RACE 논문 기반 GA + MARL 하이브리드 학습
-- Phase 1 (세대 1-30): Pure GA
-- Phase 2 (세대 31-100): GA + RL Fine-tuning
+GA + MARL 하이브리드 학습 (RACE 방식 참고)
 """
 
 import numpy as np
 import copy
 from tqdm import tqdm
+from multiprocessing import Pool
 from agents.multi_agent_system import MultiAgentSystem
 from environment.backtest_env import BacktestEnv
 from utils.replay_buffer import SharedReplayBuffer
@@ -67,16 +66,29 @@ class GATrainer:
         self.env = BacktestEnv(n_days=self.env_n_days)
         print(f"[OK] 백테스트 환경 준비 완료")
         
-        # Shared Replay Buffer (RACE 방식: 모든 팀의 경험 공유)
+        # Shared Replay Buffer
         self.shared_replay_buffer = SharedReplayBuffer(capacity=config.BUFFER_CAPACITY)
         print(f"[OK] Shared Replay Buffer 생성 (용량: {config.BUFFER_CAPACITY})")
+        
+        # 환경별 최적화 설정 출력
+        print(f"\n{'='*60}")
+        print(f"환경 최적화 설정")
+        print(f"{'='*60}")
+        print(f"실행 환경: {'Colab' if config.ENV['is_colab'] else 'Local'}")
+        print(f"GPU: {config.ENV['gpu_name'] if config.ENV['has_gpu'] else 'CPU Only'}")
+        if config.ENV['has_gpu']:
+            print(f"GPU 메모리: {config.ENV['gpu_memory_gb']:.1f} GB")
+        print(f"배치 크기: {config.BATCH_SIZE}")
+        print(f"혼합 정밀도 (FP16): {'활성화' if config.USE_AMP else '비활성화'}")
+        print(f"병렬 백테스트: {'활성화 (준비중)' if config.USE_PARALLEL_BACKTEST else '비활성화'}")
+        print(f"{'='*60}")
         
         # 진화 기록
         self.fitness_history = []  # 세대별 최고/평균/최저 fitness
         self.best_system = None
         self.best_fitness = -np.inf
         
-        print(f"{'='*60}\n")
+        print(f"\n")
     
     def evaluate_fitness(self, system, verbose=False):
         """
@@ -273,17 +285,35 @@ class GATrainer:
         
         Returns:
             int: 수집된 transition 수
+        
+        Note:
+            병렬 백테스트 (Colab 최적화):
+            - config.USE_PARALLEL_BACKTEST = True일 때 활성화
+            - multiprocessing.Pool로 구현 가능
+            - PyTorch 모델 pickle 이슈 주의
         """
         initial_buffer_size = len(self.shared_replay_buffer)
         
+        # TODO: 병렬 백테스트 구현 (Colab에서 5-10배 빠름)
+        # if config.USE_PARALLEL_BACKTEST:
+        #     with Pool(config.PARALLEL_WORKERS) as pool:
+        #         results = pool.map(self._rollout_single_system, self.population)
+        
         # 1. EA Population rollout + fitness 측정 (n개)
+        ea_portfolio_values = []  # 각 팀의 최종 자산
+        ea_returns = []  # 각 팀의 수익률
+        
         for i, system in enumerate(self.population):
             obs = self.env.reset()
             done = False
+            final_portfolio_value = config.INITIAL_CAPITAL
             
             while not done:
                 actions = system.act(obs)
                 next_obs, rewards, done, info = self.env.step(actions)
+                
+                # 최종 자산 추적
+                final_portfolio_value = info['portfolio_value']
                 
                 # Shared buffer에 저장
                 if not done:
@@ -317,17 +347,29 @@ class GATrainer:
             metrics = self.env.get_performance_metrics()
             system.fitness = metrics['sharpe_ratio']
             
-            if verbose and (i + 1) % 5 == 0:
-                print(f"    EA 팀 {i+1}/{len(self.population)} 완료 (Fitness: {system.fitness:.4f})")
+            # 자산 및 수익률 기록
+            return_rate = (final_portfolio_value / config.INITIAL_CAPITAL - 1) * 100
+            ea_portfolio_values.append(final_portfolio_value)
+            ea_returns.append(return_rate)
+            
+            if verbose:
+                print(f"    EA #{i+1:2d}: 자산={final_portfolio_value:>12,.0f}원 | 수익률={return_rate:>6.2f}% | Fitness={system.fitness:>7.4f}")
         
         # 2. MARL 팀도 rollout + fitness 측정 (1개) ⭐ 핵심!
+        marl_portfolio_value = None
+        marl_return = None
+        
         if include_marl and self.marl_team is not None:
             obs = self.env.reset()
             done = False
+            final_portfolio_value = config.INITIAL_CAPITAL
             
             while not done:
                 actions = self.marl_team.act(obs)
                 next_obs, rewards, done, info = self.env.step(actions)
+                
+                # 최종 자산 추적
+                final_portfolio_value = info['portfolio_value']
                 
                 if not done:
                     transition = {
@@ -360,8 +402,21 @@ class GATrainer:
             metrics = self.env.get_performance_metrics()
             self.marl_team.fitness = metrics['sharpe_ratio']
             
+            # 자산 및 수익률 기록
+            marl_return = (final_portfolio_value / config.INITIAL_CAPITAL - 1) * 100
+            marl_portfolio_value = final_portfolio_value
+            
             if verbose:
-                print(f"    MARL 팀 완료 (Fitness: {self.marl_team.fitness:.4f})")
+                print(f"    MARL   : 자산={final_portfolio_value:>12,.0f}원 | 수익률={marl_return:>6.2f}% | Fitness={self.marl_team.fitness:>7.4f}")
+        
+        # 3. 전체 요약 출력
+        if verbose and len(ea_portfolio_values) > 0:
+            print(f"\n    [요약] EA 팀 ({len(ea_portfolio_values)}개)")
+            print(f"      자산 - 최고: {max(ea_portfolio_values):>12,.0f}원 | 평균: {np.mean(ea_portfolio_values):>12,.0f}원 | 최저: {min(ea_portfolio_values):>12,.0f}원")
+            print(f"      수익률 - 최고: {max(ea_returns):>6.2f}% | 평균: {np.mean(ea_returns):>6.2f}% | 최저: {min(ea_returns):>6.2f}%")
+            if marl_portfolio_value is not None:
+                print(f"    [요약] MARL 팀")
+                print(f"      자산: {marl_portfolio_value:>12,.0f}원 | 수익률: {marl_return:>6.2f}%")
         
         collected = len(self.shared_replay_buffer) - initial_buffer_size
         return collected
@@ -429,9 +484,8 @@ class GATrainer:
             
             # 1. Rollout + Fitness 평가
             print(f"\n[1/4] Rollout + Fitness 평가: EA({len(self.population)}개) + MARL(1개)")
-            collected = self.rollout_and_evaluate(include_marl=True, verbose=False)
-            print(f"  수집된 경험: {collected}개")
-            print(f"  총 Buffer 크기: {len(self.shared_replay_buffer)}")
+            collected = self.rollout_and_evaluate(include_marl=True, verbose=True)
+            print(f"\n  [OK] 수집된 경험: {collected}개 | 총 Buffer 크기: {len(self.shared_replay_buffer)}")
             
             # Fitness 통계
             fitnesses = [s.fitness if s.fitness is not None else -np.inf 

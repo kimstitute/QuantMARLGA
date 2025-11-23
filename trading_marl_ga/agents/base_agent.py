@@ -7,6 +7,7 @@ Actor-Critic 기반 MARL 에이전트
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
+from torch.cuda.amp import autocast, GradScaler
 import copy
 import numpy as np
 from agents.networks import ActorNetwork, CriticNetwork
@@ -56,6 +57,15 @@ class BaseAgent:
             self.critic.parameters(),
             lr=config.LEARNING_RATE_CRITIC
         )
+        
+        # ============================================
+        # Mixed Precision Training (Colab 최적화)
+        # ============================================
+        self.use_amp = config.USE_AMP
+        if self.use_amp:
+            self.scaler = GradScaler()
+        else:
+            self.scaler = None
     
     def act(self, obs, deterministic=False):
         """
@@ -99,30 +109,47 @@ class BaseAgent:
         dones = batch['done']
         
         # ============================================
-        # Critic Update
+        # Critic Update (with Mixed Precision if enabled)
         # ============================================
         with torch.no_grad():
             # TD target 계산
             next_values = self.critic_target(next_obs)
             td_target = rewards + (1 - dones) * config.GAMMA * next_values
         
-        # Current Q-value
-        current_values = self.critic(obs)
-        
-        # Critic loss (MSE)
-        critic_loss = F.mse_loss(current_values, td_target)
-        
-        # Critic 업데이트
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            self.critic.parameters(),
-            config.GRAD_CLIP
-        )
-        self.critic_optimizer.step()
+        # Mixed Precision Training (Colab 최적화)
+        if self.use_amp:
+            with autocast():
+                # Current Q-value
+                current_values = self.critic(obs)
+                # Critic loss (MSE)
+                critic_loss = F.mse_loss(current_values, td_target)
+            
+            # Critic 업데이트 (with GradScaler)
+            self.critic_optimizer.zero_grad()
+            self.scaler.scale(critic_loss).backward()
+            self.scaler.unscale_(self.critic_optimizer)
+            torch.nn.utils.clip_grad_norm_(
+                self.critic.parameters(),
+                config.GRAD_CLIP
+            )
+            self.scaler.step(self.critic_optimizer)
+            self.scaler.update()
+        else:
+            # 일반 학습 (Local)
+            current_values = self.critic(obs)
+            critic_loss = F.mse_loss(current_values, td_target)
+            
+            # Critic 업데이트
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                self.critic.parameters(),
+                config.GRAD_CLIP
+            )
+            self.critic_optimizer.step()
         
         # ============================================
-        # Actor Update
+        # Actor Update (with Mixed Precision if enabled)
         # ============================================
         with torch.no_grad():
             # Advantage 계산
@@ -130,21 +157,39 @@ class BaseAgent:
             # 정규화 (학습 안정화)
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        # Actor 출력
-        predicted_actions = self.actor(obs)
-        
-        # Actor loss (Advantage-weighted MSE)
-        action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
-        actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
-        
-        # Actor 업데이트
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            self.actor.parameters(),
-            config.GRAD_CLIP
-        )
-        self.actor_optimizer.step()
+        # Mixed Precision Training (Colab 최적화)
+        if self.use_amp:
+            with autocast():
+                # Actor 출력
+                predicted_actions = self.actor(obs)
+                # Actor loss (Advantage-weighted MSE)
+                action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
+                actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
+            
+            # Actor 업데이트 (with GradScaler)
+            self.actor_optimizer.zero_grad()
+            self.scaler.scale(actor_loss).backward()
+            self.scaler.unscale_(self.actor_optimizer)
+            torch.nn.utils.clip_grad_norm_(
+                self.actor.parameters(),
+                config.GRAD_CLIP
+            )
+            self.scaler.step(self.actor_optimizer)
+            self.scaler.update()
+        else:
+            # 일반 학습 (Local)
+            predicted_actions = self.actor(obs)
+            action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
+            actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
+            
+            # Actor 업데이트
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                self.actor.parameters(),
+                config.GRAD_CLIP
+            )
+            self.actor_optimizer.step()
         
         # ============================================
         # Soft Update Target Network
@@ -181,13 +226,13 @@ class BaseAgent:
             # Actor 변이
             for param in self.actor.parameters():
                 if np.random.rand() < alpha:
-                    noise = torch.randn_like(param) * 0.1
+                    noise = torch.randn_like(param) * 0.02  # 0.1 → 0.02 (ES 논문 표준)
                     param.add_(noise)
             
             # Critic 변이 (약하게)
             for param in self.critic.parameters():
                 if np.random.rand() < alpha * 0.5:
-                    noise = torch.randn_like(param) * 0.05
+                    noise = torch.randn_like(param) * 0.01  # 0.05 → 0.01
                     param.add_(noise)
     
     def clone(self):
