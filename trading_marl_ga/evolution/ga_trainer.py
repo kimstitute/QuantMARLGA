@@ -524,18 +524,16 @@ class GATrainer:
             print(f"  MARL 팀 Fitness: {marl_fitness:.4f} (RL 학습 후)")
             print(f"  Worst 팀 (#{worst_idx}): {fitnesses[worst_idx]:.4f}")
             
-            # Worst와 교체 (MARL 팀은 Population의 worst를 대체)
+            # Worst와 교체 (MARL 복사본을 Population에 주입)
             self.population[worst_idx] = self.marl_team.clone()
             self.population[worst_idx].fitness = marl_fitness
             
-            # 새로운 MARL 팀 생성 (다음 세대용)
-            # 현재 best를 복제
-            best_idx = np.argmax([s.fitness if s.fitness is not None else -np.inf 
-                                 for s in self.population])
-            self.marl_team = self.population[best_idx].clone()
+            # 중요: MARL 원본(self.marl_team)은 절대 대체하지 않음!
+            # 다음 세대에서도 계속 RL 학습을 이어감
+            # Population의 best로 대체하는 것은 잘못된 구현!
             
-            print(f"  [OK] 교체 완료")
-            print(f"  [OK] 다음 세대 MARL 팀 준비 (Best #{best_idx} 복제)")
+            print(f"  [OK] Injection 완료 (MARL 복사본 → Population[{worst_idx}])")
+            print(f"  [INFO] MARL 원본은 보존, 다음 세대 계속 RL 학습")
             
             # 4. 진화 (GA) - Injection 이후에 수행
             print(f"\n[4/4] 진화 (Selection, Crossover, Mutation)")
