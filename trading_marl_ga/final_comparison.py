@@ -38,7 +38,7 @@ trainer = GATrainer(
     n_generations=N_GENERATIONS,
     env_n_days=N_DAYS,
     mutation_prob=config.MUTATION_PROB,
-    mutation_alpha=config.MUTATION_ALPHA
+    mutation_scale=config.MUTATION_SCALE
 )
 
 best_system, fitness_history = trainer.train(

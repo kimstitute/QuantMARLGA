@@ -130,8 +130,10 @@ class Config:
     # ========================================
     POPULATION_SIZE = 10  # 20 → 10 (빠른 실험, 종목 수 증가로 보완)
     N_GENERATIONS = 100
-    MUTATION_PROB = 0.9
-    MUTATION_ALPHA = 0.2
+    
+    # Mutation 설정 (가우시안 노이즈 기반)
+    MUTATION_PROB = 0.9    # 각 파라미터가 변이할 확률 (0.0~1.0)
+    MUTATION_SCALE = 0.02  # 가우시안 노이즈 표준편차 (σ)
     
     # RL Fine-tuning
     TOP_K = 10

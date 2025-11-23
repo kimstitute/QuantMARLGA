@@ -25,20 +25,20 @@ class GATrainer:
     """
     
     def __init__(self, population_size=None, n_generations=None, 
-                 env_n_days=200, mutation_prob=None, mutation_alpha=None):
+                 env_n_days=200, mutation_prob=None, mutation_scale=None):
         """
         Args:
             population_size (int): Population 크기 (기본: config.POPULATION_SIZE)
             n_generations (int): 총 세대 수 (기본: config.N_GENERATIONS)
             env_n_days (int): 백테스트 기간 (일)
-            mutation_prob (float): 돌연변이 확률
-            mutation_alpha (float): 돌연변이 강도
+            mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
+            mutation_scale (float): 가우시안 노이즈 표준편차 (σ)
         """
         self.population_size = population_size or config.POPULATION_SIZE
         self.n_generations = n_generations or config.N_GENERATIONS
         self.env_n_days = env_n_days
         self.mutation_prob = mutation_prob or config.MUTATION_PROB
-        self.mutation_alpha = mutation_alpha or config.MUTATION_ALPHA
+        self.mutation_scale = mutation_scale or config.MUTATION_SCALE
         
         # Population 초기화
         print(f"\n{'='*60}")
@@ -48,7 +48,7 @@ class GATrainer:
         print(f"세대 수: {self.n_generations}")
         print(f"백테스트 기간: {self.env_n_days}일")
         print(f"돌연변이 확률: {self.mutation_prob}")
-        print(f"돌연변이 강도: {self.mutation_alpha}")
+        print(f"가우시안 노이즈 scale: {self.mutation_scale}")
         
         # EA Population (n개)
         self.population = [
@@ -281,7 +281,9 @@ class GATrainer:
             
             # Mutation
             if np.random.rand() < self.mutation_prob:
-                child.mutate(alpha=self.mutation_alpha, verbose=verbose)
+                child.mutate(mutation_prob=self.mutation_prob, 
+                           mutation_scale=self.mutation_scale, 
+                           verbose=verbose)
             else:
                 if verbose:
                     print(f"      변이: 없음 (확률 {self.mutation_prob*100:.0f}%에서 탈락)")

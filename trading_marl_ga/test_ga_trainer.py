@@ -24,7 +24,7 @@ trainer = GATrainer(
     n_generations=3,
     env_n_days=30,
     mutation_prob=0.8,
-    mutation_alpha=0.2
+    mutation_scale=0.02
 )
 
 print("\n[테스트 1] 초기 Population Fitness 평가")

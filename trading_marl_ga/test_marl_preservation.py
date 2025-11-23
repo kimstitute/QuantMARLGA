@@ -17,7 +17,7 @@ trainer = GATrainer(
     n_generations=3,
     env_n_days=10,
     mutation_prob=0.9,
-    mutation_alpha=0.2
+    mutation_scale=0.02
 )
 
 print(f"\n[초기화]")

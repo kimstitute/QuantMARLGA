@@ -16,7 +16,7 @@ trainer = GATrainer(
     n_generations=2,
     env_n_days=10,
     mutation_prob=0.9,  # 높은 확률로 변이 발생
-    mutation_alpha=0.2
+    mutation_scale=0.02
 )
 
 print(f"\n[설정]")
@@ -24,7 +24,7 @@ print(f"  Population: {trainer.population_size}개")
 print(f"  세대: {trainer.n_generations}세대")
 print(f"  백테스트: {trainer.env_n_days}일")
 print(f"  변이 확률: {trainer.mutation_prob*100:.0f}%")
-print(f"  변이 강도: {trainer.mutation_alpha}")
+print(f"  가우시안 노이즈 scale: {trainer.mutation_scale}")
 
 print(f"\n{'='*80}")
 print("학습 시작 (상세 로그 활성화)")

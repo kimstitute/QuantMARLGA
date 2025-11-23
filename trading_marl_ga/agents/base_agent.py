@@ -221,24 +221,31 @@ class BaseAgent:
                 config.TAU * param.data + (1 - config.TAU) * target_param.data
             )
     
-    def mutate(self, alpha=0.2):
+    def mutate(self, mutation_prob=0.2, mutation_scale=0.02):
         """
-        GA 변이 (Mutation)
+        GA 변이 (Mutation) - 가우시안 노이즈 기반
+        
+        각 파라미터에 대해 일정 확률로 가우시안 노이즈를 추가
         
         Args:
-            alpha (float): 변이 확률
+            mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
+            mutation_scale (float): 가우시안 노이즈의 표준편차 (σ)
+        
+        Note:
+            - Actor: 더 적극적으로 변이 (전체 mutation_prob)
+            - Critic: 더 보수적으로 변이 (mutation_prob * 0.5, scale * 0.5)
         """
         with torch.no_grad():
-            # Actor 변이
+            # Actor 변이 (정책 탐색)
             for param in self.actor.parameters():
-                if np.random.rand() < alpha:
-                    noise = torch.randn_like(param) * 0.02  # 0.1 → 0.02 (ES 논문 표준)
+                if np.random.rand() < mutation_prob:
+                    noise = torch.randn_like(param) * mutation_scale
                     param.add_(noise)
             
-            # Critic 변이 (약하게)
+            # Critic 변이 (가치 함수는 더 보수적으로)
             for param in self.critic.parameters():
-                if np.random.rand() < alpha * 0.5:
-                    noise = torch.randn_like(param) * 0.01  # 0.05 → 0.01
+                if np.random.rand() < mutation_prob * 0.5:
+                    noise = torch.randn_like(param) * (mutation_scale * 0.5)
                     param.add_(noise)
     
     def clone(self):
