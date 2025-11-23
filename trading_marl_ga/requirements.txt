@@ -13,9 +13,9 @@ scipy>=1.10.0
 # ==========================================
 # Korean Stock Market Data
 # ==========================================
-FinanceDataReader>=0.9.50
+finance-datareader>=0.9.50
 pykrx>=1.0.40
-OpenDartReader>=0.2.0
+opendart>=0.2.0
 
 # ==========================================
 # Utilities
