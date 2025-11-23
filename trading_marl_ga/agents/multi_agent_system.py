@@ -249,17 +249,37 @@ class MultiAgentSystem:
         
         return losses
     
-    def mutate(self, alpha=0.2):
+    def mutate(self, alpha=0.2, verbose=False):
         """
         모든 에이전트 네트워크 변이 (GA용)
         
         Args:
             alpha (float): 변이 강도
+            verbose (bool): 변이 과정 로그 출력
+        
+        Returns:
+            list: 변이된 에이전트 이름 목록
         """
+        mutated = []
+        
+        # 각 에이전트에 독립적으로 변이 적용 (확률적)
+        # 실제로는 모든 에이전트에 변이를 적용하지만, 로그 목적으로 추적
         self.value_agent.mutate(alpha)
+        mutated.append("Value")
+        
         self.quality_agent.mutate(alpha)
+        mutated.append("Quality")
+        
         self.portfolio_agent.mutate(alpha)
+        mutated.append("Portfolio")
+        
         self.hedging_agent.mutate(alpha)
+        mutated.append("Hedging")
+        
+        if verbose:
+            print(f"      변이: {', '.join(mutated)} (alpha={alpha})")
+        
+        return mutated
     
     def clone(self):
         """

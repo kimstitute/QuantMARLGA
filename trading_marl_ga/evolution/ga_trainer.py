@@ -156,63 +156,85 @@ class GATrainer:
         
         return fitnesses
     
-    def tournament_selection(self, tournament_size=3):
+    def tournament_selection(self, tournament_size=3, verbose=False):
         """
         Tournament Selection
         
         Args:
             tournament_size (int): 토너먼트 크기
+            verbose (bool): 선택 과정 로그 출력
         
         Returns:
-            MultiAgentSystem: 선택된 시스템
+            tuple: (선택된 시스템, 선택된 인덱스)
         """
         # 랜덤하게 tournament_size개 선택
-        candidates = np.random.choice(self.population, size=tournament_size, replace=False)
+        candidate_indices = np.random.choice(len(self.population), size=tournament_size, replace=False)
+        candidates = [self.population[i] for i in candidate_indices]
         
         # 가장 높은 fitness를 가진 시스템 반환
-        best = max(candidates, key=lambda x: x.fitness)
+        best_in_tournament = max(candidates, key=lambda x: x.fitness)
+        best_idx = self.population.index(best_in_tournament)
         
-        return best
+        if verbose:
+            candidate_fitnesses = [self.population[i].fitness for i in candidate_indices]
+            print(f"      토너먼트: 팀 {list(candidate_indices)} (fitness: {[f'{f:.3f}' for f in candidate_fitnesses]}) -> 선택: 팀 #{best_idx}")
+        
+        return best_in_tournament, best_idx
     
-    def agent_level_crossover(self, parent1, parent2):
+    def agent_level_crossover(self, parent1, parent2, parent1_idx, parent2_idx, verbose=False):
         """
-        Agent-level Crossover (RACE 핵심)
+        Agent-level Crossover (GA-MARL Hybrid 핵심)
         
         부모 2개에서 각 에이전트를 독립적으로 선택하여 자식 생성
         
         Args:
             parent1 (MultiAgentSystem): 부모 1
             parent2 (MultiAgentSystem): 부모 2
+            parent1_idx (int): 부모 1 인덱스
+            parent2_idx (int): 부모 2 인덱스
+            verbose (bool): 교차 과정 로그 출력
         
         Returns:
             MultiAgentSystem: 자식 시스템
         """
         child = MultiAgentSystem()
+        crossover_log = []
         
         # 각 에이전트를 독립적으로 선택 (50% 확률)
         if np.random.rand() < 0.5:
             child.value_agent = parent1.value_agent.clone()
+            crossover_log.append(f"Value({parent1_idx})")
         else:
             child.value_agent = parent2.value_agent.clone()
+            crossover_log.append(f"Value({parent2_idx})")
         
         if np.random.rand() < 0.5:
             child.quality_agent = parent1.quality_agent.clone()
+            crossover_log.append(f"Quality({parent1_idx})")
         else:
             child.quality_agent = parent2.quality_agent.clone()
+            crossover_log.append(f"Quality({parent2_idx})")
         
         if np.random.rand() < 0.5:
             child.portfolio_agent = parent1.portfolio_agent.clone()
+            crossover_log.append(f"Portfolio({parent1_idx})")
         else:
             child.portfolio_agent = parent2.portfolio_agent.clone()
+            crossover_log.append(f"Portfolio({parent2_idx})")
         
         if np.random.rand() < 0.5:
             child.hedging_agent = parent1.hedging_agent.clone()
+            crossover_log.append(f"Hedging({parent1_idx})")
         else:
             child.hedging_agent = parent2.hedging_agent.clone()
+            crossover_log.append(f"Hedging({parent2_idx})")
+        
+        if verbose:
+            print(f"      교차: {' + '.join(crossover_log)}")
         
         return child
     
-    def evolve_generation(self):
+    def evolve_generation(self, verbose=True):
         """
         1세대 진화
         
@@ -220,6 +242,9 @@ class GATrainer:
         2. Selection: Tournament Selection
         3. Crossover: Agent-level
         4. Mutation: Gaussian Noise
+        
+        Args:
+            verbose (bool): 상세 진화 과정 로그 출력
         
         Returns:
             dict: 세대 통계 (최고/평균/최저 fitness)
@@ -232,21 +257,34 @@ class GATrainer:
         elite_indices = np.argsort(fitnesses)[-n_elite:]
         elites = [self.population[i].clone() for i in elite_indices]
         
+        if verbose:
+            print(f"  [Elitism] 상위 {n_elite}개 보존: 팀 {list(elite_indices)}")
+            print(f"            Fitness: {[f'{fitnesses[i]:.3f}' for i in elite_indices]}")
+        
         # 새로운 Population 생성
         new_population = elites.copy()
         
         # 나머지는 Selection + Crossover + Mutation
+        offspring_count = 0
         while len(new_population) < self.population_size:
+            offspring_count += 1
+            
+            if verbose:
+                print(f"\n  [자식 #{offspring_count}]")
+            
             # Selection
-            parent1 = self.tournament_selection()
-            parent2 = self.tournament_selection()
+            parent1, p1_idx = self.tournament_selection(verbose=verbose)
+            parent2, p2_idx = self.tournament_selection(verbose=verbose)
             
             # Crossover
-            child = self.agent_level_crossover(parent1, parent2)
+            child = self.agent_level_crossover(parent1, parent2, p1_idx, p2_idx, verbose=verbose)
             
             # Mutation
             if np.random.rand() < self.mutation_prob:
-                child.mutate(alpha=self.mutation_alpha)
+                child.mutate(alpha=self.mutation_alpha, verbose=verbose)
+            else:
+                if verbose:
+                    print(f"      변이: 없음 (확률 {self.mutation_prob*100:.0f}%에서 탈락)")
             
             new_population.append(child)
         
@@ -266,6 +304,9 @@ class GATrainer:
             self.best_fitness = stats['max_fitness']
             best_idx = np.argmax(fitnesses)
             self.best_system = self.population[best_idx].clone()
+        
+        if verbose:
+            print(f"\n  [진화 완료] 총 {offspring_count}개 자식 생성")
         
         return stats
     
@@ -537,7 +578,8 @@ class GATrainer:
             
             # 4. 진화 (GA) - Injection 이후에 수행
             print(f"\n[4/4] 진화 (Selection, Crossover, Mutation)")
-            stats = self.evolve_generation()
+            # verbose=True로 설정하면 모든 교차/변이 과정 상세 로그 출력
+            stats = self.evolve_generation(verbose=True)
             
             # 세대 통계 (Phase 1과 Phase 2 공통)
             fitnesses = [s.fitness if s.fitness is not None else -np.inf for s in self.population]
