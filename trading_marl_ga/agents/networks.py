@@ -30,13 +30,55 @@ class ActorNetwork(nn.Module):
         """
         super(ActorNetwork, self).__init__()
         
-        self.net = nn.Sequential(
-            nn.Linear(obs_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim),
-            nn.Sigmoid()  # [0, 1] 범위 출력
+        # 네트워크 정의
+        self.fc1 = nn.Linear(obs_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, action_dim)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        
+        # 가중치 초기화
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        """
+        가중치 초기화 (Orthogonal initialization)
+        
+        RL에서 일반적으로 사용:
+        - Hidden layers: orthogonal with gain=sqrt(2)
+        - Output layer: orthogonal with small gain (탐색 촉진)
+        """
+        # Hidden layers: Orthogonal init
+        nn.init.orthogonal_(self.fc1.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.fc1.bias, 0.0)
+        
+        nn.init.orthogonal_(self.fc2.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.fc2.bias, 0.0)
+        
+        # Output layer: Small initialization for exploration
+        nn.init.orthogonal_(self.fc3.weight, gain=0.01)
+        nn.init.constant_(self.fc3.bias, 0.0)
+    
+    def forward(self, obs):
+        """
+        Args:
+            obs (torch.Tensor): 관측 (batch_size, obs_dim)
+            
+        Returns:
+            torch.Tensor: 행동 (batch_size, action_dim), [0, 1] 범위
+        """
+        x = self.relu(self.fc1(obs))
+        x = self.relu(self.fc2(x))
+        x = self.sigmoid(self.fc3(x))
+        return x
+    
+    @property
+    def net(self):
+        """하위 호환성을 위한 속성 (사용하지 말 것)"""
+        return nn.Sequential(
+            self.fc1, self.relu,
+            self.fc2, self.relu,
+            self.fc3, self.sigmoid
         )
     
     def forward(self, obs):
@@ -66,13 +108,32 @@ class CriticNetwork(nn.Module):
         """
         super(CriticNetwork, self).__init__()
         
-        self.net = nn.Sequential(
-            nn.Linear(obs_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
-        )
+        # 네트워크 정의
+        self.fc1 = nn.Linear(obs_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, 1)
+        self.relu = nn.ReLU()
+        
+        # 가중치 초기화
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        """
+        가중치 초기화 (Orthogonal initialization)
+        
+        RL Critic에서 일반적으로 사용:
+        - All layers: orthogonal with gain=sqrt(2)
+        """
+        # Hidden layers
+        nn.init.orthogonal_(self.fc1.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.fc1.bias, 0.0)
+        
+        nn.init.orthogonal_(self.fc2.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.fc2.bias, 0.0)
+        
+        # Output layer
+        nn.init.orthogonal_(self.fc3.weight, gain=1.0)
+        nn.init.constant_(self.fc3.bias, 0.0)
     
     def forward(self, obs):
         """
@@ -82,5 +143,17 @@ class CriticNetwork(nn.Module):
         Returns:
             torch.Tensor: 가치 추정 (batch_size, 1)
         """
-        return self.net(obs)
+        x = self.relu(self.fc1(obs))
+        x = self.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+    
+    @property
+    def net(self):
+        """하위 호환성을 위한 속성 (사용하지 말 것)"""
+        return nn.Sequential(
+            self.fc1, self.relu,
+            self.fc2, self.relu,
+            self.fc3
+        )
 
