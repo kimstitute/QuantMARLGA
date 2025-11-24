@@ -48,7 +48,7 @@ if os.path.exists(metadata_path):
     print(f"  최종 평균 Fitness: {metadata['final_mean_fitness']:.4f}")
 
 # 모델 로드
-best_system = MultiAgentSystem(config.N_STOCKS)
+best_system = MultiAgentSystem()  # system_id 불필요 (테스트용)
 best_system.load(MODEL_DIR)
 print(f"\n[OK] 모델 로드 완료: {MODEL_DIR}/")
 

@@ -1,14 +1,217 @@
 """
 에이전트를 위한 신경망 아키텍처
 
-트레이딩 에이전트를 위한 Actor-Critic 네트워크:
-- ActorNetwork: 정책 네트워크 (상태 -> 행동)
-- CriticNetwork: 가치 네트워크 (상태 -> 가치)
+RACE 스타일 공유 인코더 구조:
+- SharedEncoder: 타입별 공유 인코더 (obs -> features)
+- ActorHead: 시스템별 독립 헤드 (features -> actions)
+- CriticHead: 시스템별 독립 헤드 (features -> value)
+
+레거시:
+- ActorNetwork: 통합 Actor (하위 호환용)
+- CriticNetwork: 통합 Critic (하위 호환용)
 """
 
 import torch
 import torch.nn as nn
 
+
+class SharedEncoder(nn.Module):
+    """
+    타입별 공유 인코더 (RACE 스타일)
+    
+    같은 타입의 에이전트들이 인코더를 공유:
+    - 모든 시스템의 Value 에이전트: value_encoder 공유
+    - 모든 시스템의 Quality 에이전트: quality_encoder 공유
+    - 모든 시스템의 Portfolio 에이전트: portfolio_encoder 공유
+    - 모든 시스템의 Hedging 에이전트: hedging_encoder 공유
+    
+    장점:
+    - 샘플 효율 11배 증가 (11개 시스템 경험 공유)
+    - Off-policy learning 정당화 (같은 feature space)
+    - 메모리 효율 향상
+    """
+    
+    def __init__(self, obs_dim, hidden_dim=64):
+        """
+        Args:
+            obs_dim (int): 관측 차원
+            hidden_dim (int): 출력 feature 차원
+        """
+        super(SharedEncoder, self).__init__()
+        
+        self.fc1 = nn.Linear(obs_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        nn.init.orthogonal_(self.fc1.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.fc1.bias, 0.0)
+        
+        nn.init.orthogonal_(self.fc2.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.fc2.bias, 0.0)
+    
+    def forward(self, obs):
+        """
+        Args:
+            obs (torch.Tensor): 관측 (batch_size, obs_dim)
+            
+        Returns:
+            torch.Tensor: Feature (batch_size, hidden_dim)
+        """
+        x = self.relu(self.fc1(obs))
+        x = self.relu(self.fc2(x))
+        return x
+
+
+class ActorHead(nn.Module):
+    """
+    시스템별 독립 Actor 헤드
+    
+    SharedEncoder의 출력을 행동으로 변환
+    각 시스템마다 독립적인 헤드를 가짐
+    """
+    
+    def __init__(self, hidden_dim, action_dim):
+        """
+        Args:
+            hidden_dim (int): 입력 feature 차원
+            action_dim (int): 행동 차원 (종목 개수)
+        """
+        super(ActorHead, self).__init__()
+        
+        self.fc = nn.Linear(hidden_dim, action_dim)
+        self.sigmoid = nn.Sigmoid()
+        
+        # 작은 초기화로 탐색 촉진
+        nn.init.orthogonal_(self.fc.weight, gain=0.01)
+        nn.init.constant_(self.fc.bias, 0.0)
+    
+    def forward(self, features):
+        """
+        Args:
+            features (torch.Tensor): Encoder 출력 (batch_size, hidden_dim)
+            
+        Returns:
+            torch.Tensor: 행동 (batch_size, action_dim), [0, 1] 범위
+        """
+        return self.sigmoid(self.fc(features))
+
+
+class CriticHead(nn.Module):
+    """
+    시스템별 독립 Critic 헤드
+    
+    SharedEncoder의 출력을 가치로 변환
+    각 시스템마다 독립적인 헤드를 가짐
+    """
+    
+    def __init__(self, hidden_dim):
+        """
+        Args:
+            hidden_dim (int): 입력 feature 차원
+        """
+        super(CriticHead, self).__init__()
+        
+        self.fc = nn.Linear(hidden_dim, 1)
+        
+        nn.init.orthogonal_(self.fc.weight, gain=1.0)
+        nn.init.constant_(self.fc.bias, 0.0)
+    
+    def forward(self, features):
+        """
+        Args:
+            features (torch.Tensor): Encoder 출력 (batch_size, hidden_dim)
+            
+        Returns:
+            torch.Tensor: 가치 추정 (batch_size, 1)
+        """
+        return self.fc(features)
+
+
+class GlobalEncoders:
+    """
+    전역 공유 인코더 관리자 (RACE 스타일)
+    
+    4개의 타입별 공유 인코더를 관리:
+    - value_encoder: 모든 Value 에이전트 공유
+    - quality_encoder: 모든 Quality 에이전트 공유
+    - portfolio_encoder: 모든 Portfolio 에이전트 공유
+    - hedging_encoder: 모든 Hedging 에이전트 공유
+    
+    Singleton 패턴으로 전역 인스턴스 하나만 생성
+    """
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(GlobalEncoders, cls).__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if not GlobalEncoders._initialized:
+            self.value_encoder = None
+            self.quality_encoder = None
+            self.portfolio_encoder = None
+            self.hedging_encoder = None
+            GlobalEncoders._initialized = True
+    
+    def initialize(self, value_obs_dim, portfolio_obs_dim, hedging_obs_dim, hidden_dim=64, device='cpu'):
+        """
+        인코더 초기화
+        
+        Args:
+            value_obs_dim (int): Value/Quality 관측 차원
+            portfolio_obs_dim (int): Portfolio 관측 차원
+            hedging_obs_dim (int): Hedging 관측 차원
+            hidden_dim (int): Feature 차원
+            device (str): 디바이스
+        """
+        self.value_encoder = SharedEncoder(value_obs_dim, hidden_dim).to(device)
+        self.quality_encoder = SharedEncoder(value_obs_dim, hidden_dim).to(device)
+        self.portfolio_encoder = SharedEncoder(portfolio_obs_dim, hidden_dim).to(device)
+        self.hedging_encoder = SharedEncoder(hedging_obs_dim, hidden_dim).to(device)
+        self.device = device
+        
+        print(f"[GlobalEncoders] 초기화 완료")
+        print(f"  Value/Quality: {value_obs_dim} -> {hidden_dim}")
+        print(f"  Portfolio: {portfolio_obs_dim} -> {hidden_dim}")
+        print(f"  Hedging: {hedging_obs_dim} -> {hidden_dim}")
+        print(f"  Device: {device}")
+    
+    def get_encoder(self, agent_type):
+        """
+        에이전트 타입에 맞는 인코더 반환
+        
+        Args:
+            agent_type (str): 'value', 'quality', 'portfolio', 'hedging'
+            
+        Returns:
+            SharedEncoder: 해당 타입의 공유 인코더
+        """
+        encoders = {
+            'value': self.value_encoder,
+            'quality': self.quality_encoder,
+            'portfolio': self.portfolio_encoder,
+            'hedging': self.hedging_encoder
+        }
+        return encoders[agent_type]
+    
+    def reset(self):
+        """전역 인코더 리셋 (테스트용)"""
+        self.value_encoder = None
+        self.quality_encoder = None
+        self.portfolio_encoder = None
+        self.hedging_encoder = None
+        GlobalEncoders._initialized = False
+
+
+# ==================================================
+# 레거시 네트워크 (하위 호환용)
+# ==================================================
 
 class ActorNetwork(nn.Module):
     """

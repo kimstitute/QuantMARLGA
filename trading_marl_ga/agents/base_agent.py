@@ -2,6 +2,10 @@
 Base Agent 클래스
 
 Actor-Critic 기반 MARL 에이전트
+
+구조:
+- USE_SHARED_ENCODER=True: RACE 스타일 공유 인코더 + 독립 헤드
+- USE_SHARED_ENCODER=False: 독립 네트워크 (레거시)
 """
 
 import torch
@@ -10,7 +14,10 @@ from torch.optim import Adam
 from torch.cuda.amp import autocast, GradScaler
 import copy
 import numpy as np
-from agents.networks import ActorNetwork, CriticNetwork
+from agents.networks import (
+    ActorNetwork, CriticNetwork,
+    GlobalEncoders, ActorHead, CriticHead
+)
 from config import config
 
 
@@ -19,9 +26,8 @@ class BaseAgent:
     기본 에이전트 클래스
     
     Actor-Critic 구조:
-    - Actor: 행동 선택 (정책)
-    - Critic: 가치 평가 (Q-value)
-    - Target Critic: 안정적 학습용
+    - USE_SHARED_ENCODER=True: 공유 인코더 + 독립 헤드
+    - USE_SHARED_ENCODER=False: 독립 네트워크
     """
     
     def __init__(self, obs_dim, action_dim, name="agent"):
@@ -29,35 +35,74 @@ class BaseAgent:
         Args:
             obs_dim (int): 관측 차원
             action_dim (int): 행동 차원
-            name (str): 에이전트 이름
+            name (str): 에이전트 타입 ('value', 'quality', 'portfolio', 'hedging')
         """
         self.name = name
         self.obs_dim = obs_dim
         self.action_dim = action_dim
+        self.device = config.DEVICE
+        self.use_shared_encoder = config.USE_SHARED_ENCODER
         
         # ============================================
         # Networks
         # ============================================
-        self.device = config.DEVICE
-        self.actor = ActorNetwork(obs_dim, action_dim, config.HIDDEN_DIM).to(self.device)
-        self.critic = CriticNetwork(obs_dim, config.HIDDEN_DIM).to(self.device)
-        self.critic_target = copy.deepcopy(self.critic).to(self.device)
-        
-        # Freeze target network
-        for param in self.critic_target.parameters():
-            param.requires_grad = False
-        
-        # ============================================
-        # Optimizers
-        # ============================================
-        self.actor_optimizer = Adam(
-            self.actor.parameters(), 
-            lr=config.LEARNING_RATE_ACTOR
-        )
-        self.critic_optimizer = Adam(
-            self.critic.parameters(),
-            lr=config.LEARNING_RATE_CRITIC
-        )
+        if self.use_shared_encoder:
+            # RACE 스타일: 공유 인코더 + 독립 헤드
+            global_encoders = GlobalEncoders()
+            
+            # 타입별 공유 인코더 참조
+            self.encoder = global_encoders.get_encoder(name)
+            
+            # 독립 헤드 생성
+            hidden_dim = config.ENCODER_HIDDEN_DIM
+            self.actor_head = ActorHead(hidden_dim, action_dim).to(self.device)
+            self.critic_head = CriticHead(hidden_dim).to(self.device)
+            self.critic_head_target = copy.deepcopy(self.critic_head).to(self.device)
+            
+            # Target 헤드 동결
+            for param in self.critic_head_target.parameters():
+                param.requires_grad = False
+            
+            # Optimizer (인코더는 공유, 헤드만 독립 학습)
+            self.actor_optimizer = Adam(
+                list(self.encoder.parameters()) + list(self.actor_head.parameters()),
+                lr=config.LEARNING_RATE_ACTOR
+            )
+            self.critic_optimizer = Adam(
+                list(self.encoder.parameters()) + list(self.critic_head.parameters()),
+                lr=config.LEARNING_RATE_CRITIC
+            )
+            
+            # 하위 호환성을 위한 래핑
+            self.actor = None  # 직접 사용 안 함
+            self.critic = None
+            self.critic_target = None
+            
+        else:
+            # 레거시: 독립 네트워크
+            self.actor = ActorNetwork(obs_dim, action_dim, config.HIDDEN_DIM).to(self.device)
+            self.critic = CriticNetwork(obs_dim, config.HIDDEN_DIM).to(self.device)
+            self.critic_target = copy.deepcopy(self.critic).to(self.device)
+            
+            # Freeze target network
+            for param in self.critic_target.parameters():
+                param.requires_grad = False
+            
+            # Optimizers
+            self.actor_optimizer = Adam(
+                self.actor.parameters(), 
+                lr=config.LEARNING_RATE_ACTOR
+            )
+            self.critic_optimizer = Adam(
+                self.critic.parameters(),
+                lr=config.LEARNING_RATE_CRITIC
+            )
+            
+            # 공유 모드 변수 초기화
+            self.encoder = None
+            self.actor_head = None
+            self.critic_head = None
+            self.critic_head_target = None
         
         # ============================================
         # Mixed Precision Training
@@ -80,8 +125,15 @@ class BaseAgent:
             np.ndarray: 행동 (action_dim,)
         """
         with torch.no_grad():
-            obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)  # (1, obs_dim) -> GPU
-            action = self.actor(obs_tensor)  # (1, action_dim)
+            obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)  # (1, obs_dim)
+            
+            if self.use_shared_encoder:
+                # 공유 인코더 모드
+                features = self.encoder(obs_tensor)  # (1, hidden_dim)
+                action = self.actor_head(features)  # (1, action_dim)
+            else:
+                # 독립 네트워크 모드
+                action = self.actor(obs_tensor)  # (1, action_dim)
             
             if not deterministic:
                 # 탐험을 위한 노이즈 추가
@@ -118,42 +170,72 @@ class BaseAgent:
         # ============================================
         # Critic Update (with Mixed Precision if enabled)
         # ============================================
-        with torch.no_grad():
-            # TD target 계산
-            next_values = self.critic_target(next_obs)  # (batch_size, 1)
-            td_target = rewards + (1 - dones) * config.GAMMA * next_values  # (batch_size, 1)
-        
-        # Mixed Precision Training
-        if self.use_amp:
-            with autocast():
-                # Current Q-value
-                current_values = self.critic(obs)
-                # Critic loss (MSE)
+        if self.use_shared_encoder:
+            # 공유 인코더 모드
+            with torch.no_grad():
+                # TD target 계산
+                features_next = self.encoder(next_obs)
+                next_values = self.critic_head_target(features_next)  # (batch_size, 1)
+                td_target = rewards + (1 - dones) * config.GAMMA * next_values
+            
+            if self.use_amp:
+                with autocast():
+                    features = self.encoder(obs)
+                    current_values = self.critic_head(features)
+                    critic_loss = F.mse_loss(current_values, td_target)
+                
+                self.critic_optimizer.zero_grad()
+                self.scaler.scale(critic_loss).backward()
+                self.scaler.unscale_(self.critic_optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    list(self.encoder.parameters()) + list(self.critic_head.parameters()),
+                    config.GRAD_CLIP
+                )
+                self.scaler.step(self.critic_optimizer)
+                self.scaler.update()
+            else:
+                features = self.encoder(obs)
+                current_values = self.critic_head(features)
                 critic_loss = F.mse_loss(current_values, td_target)
-            
-            # Critic 업데이트 (with GradScaler)
-            self.critic_optimizer.zero_grad()
-            self.scaler.scale(critic_loss).backward()
-            self.scaler.unscale_(self.critic_optimizer)
-            torch.nn.utils.clip_grad_norm_(
-                self.critic.parameters(),
-                config.GRAD_CLIP
-            )
-            self.scaler.step(self.critic_optimizer)
-            self.scaler.update()
+                
+                self.critic_optimizer.zero_grad()
+                critic_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    list(self.encoder.parameters()) + list(self.critic_head.parameters()),
+                    config.GRAD_CLIP
+                )
+                self.critic_optimizer.step()
         else:
-            # 일반 학습 (Local)
-            current_values = self.critic(obs)
-            critic_loss = F.mse_loss(current_values, td_target)
+            # 독립 네트워크 모드
+            with torch.no_grad():
+                next_values = self.critic_target(next_obs)  # (batch_size, 1)
+                td_target = rewards + (1 - dones) * config.GAMMA * next_values
             
-            # Critic 업데이트
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                self.critic.parameters(),
-                config.GRAD_CLIP
-            )
-            self.critic_optimizer.step()
+            if self.use_amp:
+                with autocast():
+                    current_values = self.critic(obs)
+                    critic_loss = F.mse_loss(current_values, td_target)
+                
+                self.critic_optimizer.zero_grad()
+                self.scaler.scale(critic_loss).backward()
+                self.scaler.unscale_(self.critic_optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    self.critic.parameters(),
+                    config.GRAD_CLIP
+                )
+                self.scaler.step(self.critic_optimizer)
+                self.scaler.update()
+            else:
+                current_values = self.critic(obs)
+                critic_loss = F.mse_loss(current_values, td_target)
+                
+                self.critic_optimizer.zero_grad()
+                critic_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.critic.parameters(),
+                    config.GRAD_CLIP
+                )
+                self.critic_optimizer.step()
         
         # ============================================
         # Actor Update (with Mixed Precision if enabled)
@@ -164,39 +246,66 @@ class BaseAgent:
             # 정규화 (학습 안정화)
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        # Mixed Precision Training
-        if self.use_amp:
-            with autocast():
-                # Actor 출력
-                predicted_actions = self.actor(obs)
-                # Actor loss (Advantage-weighted MSE)
+        if self.use_shared_encoder:
+            # 공유 인코더 모드
+            if self.use_amp:
+                with autocast():
+                    features = self.encoder(obs)
+                    predicted_actions = self.actor_head(features)
+                    action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
+                    actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
+                
+                self.actor_optimizer.zero_grad()
+                self.scaler.scale(actor_loss).backward()
+                self.scaler.unscale_(self.actor_optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    list(self.encoder.parameters()) + list(self.actor_head.parameters()),
+                    config.GRAD_CLIP
+                )
+                self.scaler.step(self.actor_optimizer)
+                self.scaler.update()
+            else:
+                features = self.encoder(obs)
+                predicted_actions = self.actor_head(features)
                 action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
                 actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
-            
-            # Actor 업데이트 (with GradScaler)
-            self.actor_optimizer.zero_grad()
-            self.scaler.scale(actor_loss).backward()
-            self.scaler.unscale_(self.actor_optimizer)
-            torch.nn.utils.clip_grad_norm_(
-                self.actor.parameters(),
-                config.GRAD_CLIP
-            )
-            self.scaler.step(self.actor_optimizer)
-            self.scaler.update()
+                
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    list(self.encoder.parameters()) + list(self.actor_head.parameters()),
+                    config.GRAD_CLIP
+                )
+                self.actor_optimizer.step()
         else:
-            # 일반 학습 (Local)
-            predicted_actions = self.actor(obs)
-            action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
-            actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
-            
-            # Actor 업데이트
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                self.actor.parameters(),
-                config.GRAD_CLIP
-            )
-            self.actor_optimizer.step()
+            # 독립 네트워크 모드
+            if self.use_amp:
+                with autocast():
+                    predicted_actions = self.actor(obs)
+                    action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
+                    actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
+                
+                self.actor_optimizer.zero_grad()
+                self.scaler.scale(actor_loss).backward()
+                self.scaler.unscale_(self.actor_optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    self.actor.parameters(),
+                    config.GRAD_CLIP
+                )
+                self.scaler.step(self.actor_optimizer)
+                self.scaler.update()
+            else:
+                predicted_actions = self.actor(obs)
+                action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
+                actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
+                
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.actor.parameters(),
+                    config.GRAD_CLIP
+                )
+                self.actor_optimizer.step()
         
         # ============================================
         # Soft Update Target Network
@@ -214,66 +323,100 @@ class BaseAgent:
         
         θ' <- τ * θ + (1 - τ) * θ'
         """
-        for param, target_param in zip(
-            self.critic.parameters(),
-            self.critic_target.parameters()
-        ):
-            target_param.data.copy_(
-                config.TAU * param.data + (1 - config.TAU) * target_param.data
-            )
+        if self.use_shared_encoder:
+            # 공유 모드: Critic 헤드만 업데이트 (인코더는 공유)
+            for param, target_param in zip(
+                self.critic_head.parameters(),
+                self.critic_head_target.parameters()
+            ):
+                target_param.data.copy_(
+                    config.TAU * param.data + (1 - config.TAU) * target_param.data
+                )
+        else:
+            # 독립 모드: Critic 전체 업데이트
+            for param, target_param in zip(
+                self.critic.parameters(),
+                self.critic_target.parameters()
+            ):
+                target_param.data.copy_(
+                    config.TAU * param.data + (1 - config.TAU) * target_param.data
+                )
     
     def mutate(self, mutation_prob=0.2, mutation_scale_ratio=0.05):
         """
-        GA 변이 (Mutation) - 상대적 크기 기반 가우시안 노이즈
+        GA 변이 (Mutation)
         
-        각 파라미터의 실제 크기에 비례하는 노이즈를 추가하여
-        레이어별 가중치 크기 차이에 자동으로 적응
+        공유 모드: 인코더는 변이 안 함, 헤드만 변이
+        독립 모드: 전체 네트워크 변이
         
         Args:
-            mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
+            mutation_prob (float): 각 파라미터가 변이할 확률
             mutation_scale_ratio (float): 가중치 크기 대비 노이즈 비율
-                예: 0.05 = 가중치 평균 절댓값의 5%
         
         Note:
-            - Actor: 더 적극적으로 변이 (전체 mutation_prob, ratio)
-            - Critic: 더 보수적으로 변이 (mutation_prob * 0.5, ratio * 0.5)
-            - 상대적 크기 기반으로 모든 레이어에 균형잡힌 변이
-            - 변이 후 critic_target 동기화
+            - 공유 인코더는 모든 시스템이 공유하므로 변이 안 함!
+            - 헤드만 독립적으로 변이
         """
         with torch.no_grad():
-            # Actor 변이 (정책 탐색)
-            for param in self.actor.parameters():
-                if np.random.rand() < mutation_prob:
-                    # 현재 파라미터 크기에 비례하는 노이즈
-                    param_scale = param.abs().mean() + 1e-8  # 0 방지
-                    noise_std = param_scale * mutation_scale_ratio
-                    noise = torch.randn_like(param) * noise_std
-                    param.add_(noise)
-            
-            # Critic 변이 (가치 함수는 더 보수적으로)
-            for param in self.critic.parameters():
-                if np.random.rand() < mutation_prob * 0.5:
-                    param_scale = param.abs().mean() + 1e-8
-                    noise_std = param_scale * (mutation_scale_ratio * 0.5)
-                    noise = torch.randn_like(param) * noise_std
-                    param.add_(noise)
-            
-            # Critic 변이 후 target 동기화
-            self.critic_target.load_state_dict(self.critic.state_dict())
+            if self.use_shared_encoder:
+                # 공유 모드: 헤드만 변이 (인코더는 공유이므로 변이 안 함!)
+                for param in self.actor_head.parameters():
+                    if np.random.rand() < mutation_prob:
+                        param_scale = param.abs().mean() + 1e-8
+                        noise_std = param_scale * mutation_scale_ratio
+                        noise = torch.randn_like(param) * noise_std
+                        param.add_(noise)
+                
+                for param in self.critic_head.parameters():
+                    if np.random.rand() < mutation_prob * 0.5:
+                        param_scale = param.abs().mean() + 1e-8
+                        noise_std = param_scale * (mutation_scale_ratio * 0.5)
+                        noise = torch.randn_like(param) * noise_std
+                        param.add_(noise)
+                
+                # Target 헤드 동기화
+                self.critic_head_target.load_state_dict(self.critic_head.state_dict())
+            else:
+                # 독립 모드: 전체 네트워크 변이
+                for param in self.actor.parameters():
+                    if np.random.rand() < mutation_prob:
+                        param_scale = param.abs().mean() + 1e-8
+                        noise_std = param_scale * mutation_scale_ratio
+                        noise = torch.randn_like(param) * noise_std
+                        param.add_(noise)
+                
+                for param in self.critic.parameters():
+                    if np.random.rand() < mutation_prob * 0.5:
+                        param_scale = param.abs().mean() + 1e-8
+                        noise_std = param_scale * (mutation_scale_ratio * 0.5)
+                        noise = torch.randn_like(param) * noise_std
+                        param.add_(noise)
+                
+                # Target 동기화
+                self.critic_target.load_state_dict(self.critic.state_dict())
     
     def clone(self):
         """
-        에이전트 복사 (Deep copy)
+        에이전트 복사
+        
+        공유 모드: 인코더는 참조 유지, 헤드만 deep copy
+        독립 모드: 전체 네트워크 deep copy
         
         Returns:
             BaseAgent: 복사된 에이전트
         """
         new_agent = BaseAgent(self.obs_dim, self.action_dim, self.name)
         
-        # 네트워크 가중치 복사
-        new_agent.actor.load_state_dict(self.actor.state_dict())
-        new_agent.critic.load_state_dict(self.critic.state_dict())
-        new_agent.critic_target.load_state_dict(self.critic_target.state_dict())
+        if self.use_shared_encoder:
+            # 공유 모드: 헤드만 복사 (인코더는 자동으로 같은 참조)
+            new_agent.actor_head.load_state_dict(self.actor_head.state_dict())
+            new_agent.critic_head.load_state_dict(self.critic_head.state_dict())
+            new_agent.critic_head_target.load_state_dict(self.critic_head_target.state_dict())
+        else:
+            # 독립 모드: 전체 네트워크 복사
+            new_agent.actor.load_state_dict(self.actor.state_dict())
+            new_agent.critic.load_state_dict(self.critic.state_dict())
+            new_agent.critic_target.load_state_dict(self.critic_target.state_dict())
         
         return new_agent
     
@@ -281,16 +424,30 @@ class BaseAgent:
         """
         에이전트 저장
         
+        공유 모드: 헤드만 저장 (인코더는 전역)
+        독립 모드: 전체 네트워크 저장
+        
         Args:
             path (str): 저장 경로
         """
-        torch.save({
-            'actor': self.actor.state_dict(),
-            'critic': self.critic.state_dict(),
-            'critic_target': self.critic_target.state_dict(),
-            'actor_optimizer': self.actor_optimizer.state_dict(),
-            'critic_optimizer': self.critic_optimizer.state_dict(),
-        }, path)
+        if self.use_shared_encoder:
+            torch.save({
+                'use_shared_encoder': True,
+                'actor_head': self.actor_head.state_dict(),
+                'critic_head': self.critic_head.state_dict(),
+                'critic_head_target': self.critic_head_target.state_dict(),
+                'actor_optimizer': self.actor_optimizer.state_dict(),
+                'critic_optimizer': self.critic_optimizer.state_dict(),
+            }, path)
+        else:
+            torch.save({
+                'use_shared_encoder': False,
+                'actor': self.actor.state_dict(),
+                'critic': self.critic.state_dict(),
+                'critic_target': self.critic_target.state_dict(),
+                'actor_optimizer': self.actor_optimizer.state_dict(),
+                'critic_optimizer': self.critic_optimizer.state_dict(),
+            }, path)
     
     def load(self, path):
         """
@@ -299,10 +456,20 @@ class BaseAgent:
         Args:
             path (str): 로드 경로
         """
-        checkpoint = torch.load(path)
-        self.actor.load_state_dict(checkpoint['actor'])
-        self.critic.load_state_dict(checkpoint['critic'])
-        self.critic_target.load_state_dict(checkpoint['critic_target'])
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        checkpoint = torch.load(path, map_location=self.device)
+        
+        if checkpoint.get('use_shared_encoder', False):
+            # 공유 모드: 헤드만 로드
+            self.actor_head.load_state_dict(checkpoint['actor_head'])
+            self.critic_head.load_state_dict(checkpoint['critic_head'])
+            self.critic_head_target.load_state_dict(checkpoint['critic_head_target'])
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        else:
+            # 독립 모드: 전체 네트워크 로드
+            self.actor.load_state_dict(checkpoint['actor'])
+            self.critic.load_state_dict(checkpoint['critic'])
+            self.critic_target.load_state_dict(checkpoint['critic_target'])
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
 

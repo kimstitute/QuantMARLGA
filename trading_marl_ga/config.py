@@ -98,6 +98,10 @@ class Config:
     # ========================================
     HIDDEN_DIM = max(128, N_STOCKS * 12)  # min 128, 12 neurons per stock
     
+    # RACE-style Type-specific Shared Encoders
+    USE_SHARED_ENCODER = True  # True: 타입별 공유 인코더 (RACE), False: 독립 네트워크
+    ENCODER_HIDDEN_DIM = 64  # 공유 인코더 출력 차원
+    
     # ========================================
     # Training Hyperparameters
     # ========================================

@@ -6,12 +6,16 @@
 2. Quality Agent: 품질 지표로 필터링
 3. Portfolio Agent: 포지션 크기 결정
 4. Hedging Agent: 리스크 노출 관리
+
+RACE 구조 (USE_SHARED_ENCODER=True):
+- 타입별 공유 인코더 + 시스템별 독립 헤드
 """
 
 import copy
 import numpy as np
 
 from agents.specialized_agents import ValueAgent, QualityAgent, PortfolioAgent, HedgingAgent
+from agents.networks import GlobalEncoders
 from utils.replay_buffer import SharedReplayBuffer
 from config import config
 
@@ -30,6 +34,19 @@ class MultiAgentSystem:
             system_id (int, optional): GA population에서 이 시스템의 식별자
         """
         self.system_id = system_id
+        
+        # 전역 공유 인코더 초기화 (첫 번째 인스턴스만)
+        if config.USE_SHARED_ENCODER:
+            global_encoders = GlobalEncoders()
+            if global_encoders.value_encoder is None:
+                # 아직 초기화 안 됨 → 지금 초기화
+                global_encoders.initialize(
+                    value_obs_dim=config.VALUE_OBS_DIM,
+                    portfolio_obs_dim=config.PORTFOLIO_OBS_DIM,
+                    hedging_obs_dim=config.HEDGING_OBS_DIM,
+                    hidden_dim=config.ENCODER_HIDDEN_DIM,
+                    device=config.DEVICE
+                )
         
         # 4개 에이전트 초기화
         self.value_agent = ValueAgent()
@@ -297,17 +314,54 @@ class MultiAgentSystem:
         return new_system
     
     def save(self, path):
-        """모든 에이전트를 디스크에 저장"""
+        """
+        모든 에이전트를 디스크에 저장
+        
+        공유 모드: 전역 인코더 + 에이전트 헤드
+        독립 모드: 에이전트 네트워크
+        """
         import os
+        import torch
         os.makedirs(path, exist_ok=True)
         
+        # 에이전트 저장
         self.value_agent.save(f"{path}/value_agent.pth")
         self.quality_agent.save(f"{path}/quality_agent.pth")
         self.portfolio_agent.save(f"{path}/portfolio_agent.pth")
         self.hedging_agent.save(f"{path}/hedging_agent.pth")
+        
+        # 공유 인코더 저장 (공유 모드일 때만)
+        if config.USE_SHARED_ENCODER:
+            global_encoders = GlobalEncoders()
+            torch.save({
+                'value_encoder': global_encoders.value_encoder.state_dict(),
+                'quality_encoder': global_encoders.quality_encoder.state_dict(),
+                'portfolio_encoder': global_encoders.portfolio_encoder.state_dict(),
+                'hedging_encoder': global_encoders.hedging_encoder.state_dict(),
+            }, f"{path}/global_encoders.pth")
     
     def load(self, path):
-        """디스크에서 모든 에이전트 로드"""
+        """
+        디스크에서 모든 에이전트 로드
+        
+        공유 모드: 전역 인코더 + 에이전트 헤드
+        독립 모드: 에이전트 네트워크
+        """
+        import torch
+        import os
+        
+        # 공유 인코더 로드 (공유 모드일 때만)
+        if config.USE_SHARED_ENCODER:
+            encoder_path = f"{path}/global_encoders.pth"
+            if os.path.exists(encoder_path):
+                global_encoders = GlobalEncoders()
+                checkpoint = torch.load(encoder_path, map_location=config.DEVICE)
+                global_encoders.value_encoder.load_state_dict(checkpoint['value_encoder'])
+                global_encoders.quality_encoder.load_state_dict(checkpoint['quality_encoder'])
+                global_encoders.portfolio_encoder.load_state_dict(checkpoint['portfolio_encoder'])
+                global_encoders.hedging_encoder.load_state_dict(checkpoint['hedging_encoder'])
+        
+        # 에이전트 로드
         self.value_agent.load(f"{path}/value_agent.pth")
         self.quality_agent.load(f"{path}/quality_agent.pth")
         self.portfolio_agent.load(f"{path}/portfolio_agent.pth")
