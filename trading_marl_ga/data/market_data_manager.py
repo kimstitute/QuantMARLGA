@@ -61,9 +61,8 @@ class MarketDataManager:
         """
         # 실제 데이터는 lookback_days 이전부터 로드
         # 거래일 기준이므로 달력일로는 약 1.5배 필요 (주말/공휴일 제외)
-        # 충분한 여유 확보: min_data_days * 1.5
         from datetime import datetime, timedelta
-        calendar_days = int(min_data_days * 1.6)  # 거래일 160일 ≈ 달력일 256일
+        calendar_days = int(lookback_days * 1.5)  # 거래일 → 달력일 변환
         actual_start = (datetime.strptime(start_date, '%Y-%m-%d') - 
                        timedelta(days=calendar_days)).strftime('%Y-%m-%d')
         
@@ -89,9 +88,9 @@ class MarketDataManager:
         )
         
         # 3. 데이터 기간이 충분한 종목만 선택
-        # - lookback + 백테스트 기간에 충분한 데이터
+        # - lookback 기간 이상의 데이터
         # - start_date 이전부터 데이터 존재
-        min_data_days = lookback_days + 100  # lookback용 + 팩터 계산용
+        min_data_days = lookback_days  # 최소한 lookback 기간만 확보
         start_date_dt = pd.to_datetime(start_date)
         valid_tickers = []
         valid_price_data = {}
