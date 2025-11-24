@@ -182,27 +182,38 @@ QuantMARLGA/
 ## 🔬 실험 설정
 
 ### 데이터
-- **종목**: KOSPI 시가총액 상위 10개
-- **기간**: 2023년 (245 거래일)
+- **종목**: KOSPI 시가총액 상위 30개 (10 → 30 확대)
+- **기간**: 2023년 (최소 200 거래일 보장)
 - **Lookback**: 60 거래일 (기술적 지표 계산용)
+- **리밸런싱**: 주간 (5거래일마다)
 
-### 하이퍼파라미터
+### 하이퍼파라미터 (최적화됨 - 2025.11.24)
 ```python
+# Environment
+N_STOCKS = 30  # 다양성 증가
+REBALANCE_PERIOD = 5  # 거래 비용 절감
+
 # GA
-POPULATION_SIZE = 30
+POPULATION_SIZE = 10  # 30 → 10 (효율성)
 N_GENERATIONS = 100
 MUTATION_PROB = 0.9
-MUTATION_ALPHA = 0.2
+MUTATION_SCALE_RATIO = 0.05  # 상대적 노이즈
+ELITE_FRACTION = 0.3  # 안정성
 
 # RL
 BATCH_SIZE = 256
+BUFFER_CAPACITY = 10_000
+MIN_BUFFER_FOR_RL = 256  # 즉시 학습
 LEARNING_RATE_ACTOR = 3e-4
 LEARNING_RATE_CRITIC = 1e-3
 GAMMA = 0.99
 
-# RACE
-TOP_K = 10  # (사용 안 함, MARL 1개만)
-RL_UPDATES = 50
+# Hybrid
+RL_UPDATES = 50  # 세대당
+
+# GPU (자동 감지)
+DEVICE = "cuda" if available else "cpu"
+USE_AMP = True  # FP16 (Colab)
 ```
 
 ---
@@ -258,5 +269,5 @@ MIT License
 ---
 
 **생성일**: 2025-11-23  
-**최종 업데이트**: 2025-11-23 (RACE 방식 구현 완료)  
+**최종 업데이트**: 2025-11-24 (GPU 최적화, 하이퍼파라미터 튜닝)  
 **작성자**: AI Assistant
