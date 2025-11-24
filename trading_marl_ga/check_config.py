@@ -26,6 +26,7 @@ print(f"  Hidden 차원:               {config.HIDDEN_DIM}")
 print(f"\n[학습 하이퍼파라미터]")
 print(f"  Replay Buffer 크기:        {config.BUFFER_CAPACITY:,}")
 print(f"  Batch 크기:                {config.BATCH_SIZE}")
+print(f"  RL 학습 최소 버퍼:         {config.MIN_BUFFER_FOR_RL}")
 print(f"  Learning Rate (Actor):     {config.LEARNING_RATE_ACTOR}")
 print(f"  Learning Rate (Critic):    {config.LEARNING_RATE_CRITIC}")
 

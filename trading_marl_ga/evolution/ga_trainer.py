@@ -478,9 +478,10 @@ class GATrainer:
         Returns:
             MultiAgentSystem: 학습된 시스템
         """
-        if len(self.shared_replay_buffer) < config.BATCH_SIZE:
+        # 최소 MIN_BUFFER_FOR_RL 이상 있어야 학습 시작
+        if len(self.shared_replay_buffer) < config.MIN_BUFFER_FOR_RL:
             if verbose:
-                print(f"    [Skip] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.BATCH_SIZE})")
+                print(f"    [Skip] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.MIN_BUFFER_FOR_RL})")
             return system
         
         total_losses = []
@@ -542,7 +543,7 @@ class GATrainer:
             print(f"\n[2/4] RL: MARL 팀 학습 (Shared Buffer 활용)")
             
             # MARL 팀을 Shared buffer에서 학습
-            if len(self.shared_replay_buffer) >= config.BATCH_SIZE:
+            if len(self.shared_replay_buffer) >= config.MIN_BUFFER_FOR_RL:
                 self.marl_team = self.rl_train_from_shared_buffer(
                     self.marl_team,
                     n_updates=rl_updates,
@@ -550,7 +551,7 @@ class GATrainer:
                 )
                 print(f"  [OK] MARL 팀 학습 완료 ({rl_updates}회 업데이트)")
             else:
-                print(f"  [SKIP] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.BATCH_SIZE})")
+                print(f"  [SKIP] Buffer 부족 ({len(self.shared_replay_buffer)}/{config.MIN_BUFFER_FOR_RL})")
             
             # 3. Injection: MARL 팀을 EA Population의 Worst와 교체
             # 중요: 진화 전에 먼저 injection! (진화 후에는 새 팀들의 fitness가 None)

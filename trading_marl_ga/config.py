@@ -88,21 +88,17 @@ class Config:
     # Training Hyperparameters
     # ========================================
     # Replay Buffer
-    BUFFER_CAPACITY = 50000  # 10000 → 50000 (경험 재사용 증가)
+    BUFFER_CAPACITY = 10000  # 50000 → 10000 (현실적인 크기로 축소)
     
-    # Batch Size (환경별 자동 조정)
-    # Local: 256, Colab with GPU: 512-1024
-    if ENV['is_colab'] and ENV['has_gpu']:
-        # A100/V100: 대용량 배치
-        if ENV['gpu_memory_gb'] >= 30:  # A100 (40GB)
-            BATCH_SIZE = 1024
-        elif ENV['gpu_memory_gb'] >= 15:  # V100 (16GB)
-            BATCH_SIZE = 512
-        else:  # T4 (16GB)
-            BATCH_SIZE = 256
-    else:
-        # Local CPU/GPU
-        BATCH_SIZE = 256
+    # Batch Size (고정: 256)
+    # Off-policy RL 표준 배치 크기
+    # 너무 크면 초기 학습이 불가능 (버퍼 차기 전까지 학습 불가)
+    BATCH_SIZE = 256
+    
+    # RL 학습 시작 최소 버퍼 크기
+    # BATCH_SIZE보다 작게 설정하여 조기 학습 가능
+    # 최소 100개 transition 확보 후 학습 시작
+    MIN_BUFFER_FOR_RL = 100
     
     # Learning Rates
     LEARNING_RATE_ACTOR = 3e-4

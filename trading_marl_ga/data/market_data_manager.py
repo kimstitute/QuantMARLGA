@@ -74,16 +74,43 @@ class MarketDataManager:
         # 원래 start_date 저장 (나중에 필터링용)
         self.backtest_start_date = start_date
         
-        # 1. 종목 선택 (KOSPI 시가총액 상위)
-        self.tickers = self.price_collector.get_kospi_top_tickers(n_stocks)
+        # 1. 종목 선택 (KOSPI 시가총액 상위, 여유분 확보)
+        candidate_tickers = self.price_collector.get_kospi_top_tickers(n_stocks * 2)
         
         # 2. 주가 데이터 수집 (lookback 포함)
-        self.price_data = self.price_collector.get_price_data(
-            self.tickers, 
+        candidate_price_data = self.price_collector.get_price_data(
+            candidate_tickers, 
             actual_start,  # lookback 포함한 시작일
             end_date,
             use_cache=True
         )
+        
+        # 3. 데이터 기간이 충분한 종목만 선택 (최소 200일 이상)
+        min_data_days = max(200, lookback_days + 100)  # 최소 200일 또는 lookback + 100일
+        valid_tickers = []
+        valid_price_data = {}
+        
+        print(f"\n[데이터 필터링] 최소 {min_data_days}일 이상 보유 종목 선택")
+        for ticker in candidate_tickers:
+            if ticker in candidate_price_data:
+                data_len = len(candidate_price_data[ticker])
+                if data_len >= min_data_days:
+                    valid_tickers.append(ticker)
+                    valid_price_data[ticker] = candidate_price_data[ticker]
+                    if len(valid_tickers) >= n_stocks:
+                        break  # 필요한 개수만큼 확보하면 중단
+                else:
+                    print(f"  [SKIP] {ticker}: 데이터 부족 ({data_len}일 < {min_data_days}일)")
+        
+        if len(valid_tickers) < n_stocks:
+            print(f"[WARNING]  요청 종목 수({n_stocks}개)보다 적음 ({len(valid_tickers)}개만 확보)")
+        
+        self.tickers = valid_tickers
+        self.price_data = valid_price_data
+        
+        print(f"[OK] 유효 종목: {len(self.tickers)}개")
+        if len(self.tickers) == 0:
+            raise ValueError("유효한 종목이 없습니다. 날짜 범위를 조정하거나 종목 수를 늘려주세요.")
         
         # 3. 펀더멘털 데이터 수집 (PER, PBR 등) - lookback 포함
         try:
