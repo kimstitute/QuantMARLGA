@@ -32,7 +32,7 @@ def test_detailed_logging():
         n_generations=n_generations,
         env_n_days=env_n_days,
         mutation_prob=0.3,
-        mutation_scale=0.01
+        mutation_scale_ratio=0.03
     )
     
     print(f"\n초기화 완료!")

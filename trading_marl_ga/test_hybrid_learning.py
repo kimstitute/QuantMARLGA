@@ -24,7 +24,7 @@ trainer = GATrainer(
     n_generations=5,
     env_n_days=50,
     mutation_prob=0.8,
-    mutation_scale=0.02
+    mutation_scale_ratio=0.05
 )
 
 # 전체 학습 (Phase 1 + Phase 2)

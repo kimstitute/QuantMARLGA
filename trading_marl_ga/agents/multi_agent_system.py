@@ -249,13 +249,13 @@ class MultiAgentSystem:
         
         return losses
     
-    def mutate(self, mutation_prob=0.2, mutation_scale=0.02, verbose=False):
+    def mutate(self, mutation_prob=0.2, mutation_scale_ratio=0.05, verbose=False):
         """
-        모든 에이전트 네트워크 변이 (GA용) - 가우시안 노이즈 기반
+        모든 에이전트 네트워크 변이 (GA용) - 상대적 크기 기반 가우시안 노이즈
         
         Args:
             mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
-            mutation_scale (float): 가우시안 노이즈의 표준편차 (σ)
+            mutation_scale_ratio (float): 가중치 크기 대비 노이즈 비율
             verbose (bool): 변이 과정 로그 출력
         
         Returns:
@@ -264,20 +264,20 @@ class MultiAgentSystem:
         mutated = []
         
         # 각 에이전트에 동일한 변이 설정 적용
-        self.value_agent.mutate(mutation_prob, mutation_scale)
+        self.value_agent.mutate(mutation_prob, mutation_scale_ratio)
         mutated.append("Value")
         
-        self.quality_agent.mutate(mutation_prob, mutation_scale)
+        self.quality_agent.mutate(mutation_prob, mutation_scale_ratio)
         mutated.append("Quality")
         
-        self.portfolio_agent.mutate(mutation_prob, mutation_scale)
+        self.portfolio_agent.mutate(mutation_prob, mutation_scale_ratio)
         mutated.append("Portfolio")
         
-        self.hedging_agent.mutate(mutation_prob, mutation_scale)
+        self.hedging_agent.mutate(mutation_prob, mutation_scale_ratio)
         mutated.append("Hedging")
         
         if verbose:
-            print(f"      변이: {', '.join(mutated)} (확률={mutation_prob*100:.0f}%, scale={mutation_scale})")
+            print(f"      변이: {', '.join(mutated)} (확률={mutation_prob*100:.0f}%, 비율={mutation_scale_ratio*100:.1f}%)")
         
         return mutated
     

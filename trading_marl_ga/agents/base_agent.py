@@ -221,31 +221,39 @@ class BaseAgent:
                 config.TAU * param.data + (1 - config.TAU) * target_param.data
             )
     
-    def mutate(self, mutation_prob=0.2, mutation_scale=0.02):
+    def mutate(self, mutation_prob=0.2, mutation_scale_ratio=0.05):
         """
-        GA 변이 (Mutation) - 가우시안 노이즈 기반
+        GA 변이 (Mutation) - 상대적 크기 기반 가우시안 노이즈
         
-        각 파라미터에 대해 일정 확률로 가우시안 노이즈를 추가
+        각 파라미터의 실제 크기에 비례하는 노이즈를 추가하여
+        레이어별 가중치 크기 차이에 자동으로 적응
         
         Args:
             mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
-            mutation_scale (float): 가우시안 노이즈의 표준편차 (σ)
+            mutation_scale_ratio (float): 가중치 크기 대비 노이즈 비율
+                예: 0.05 = 가중치 평균 절댓값의 5%
         
         Note:
-            - Actor: 더 적극적으로 변이 (전체 mutation_prob)
-            - Critic: 더 보수적으로 변이 (mutation_prob * 0.5, scale * 0.5)
+            - Actor: 더 적극적으로 변이 (전체 mutation_prob, ratio)
+            - Critic: 더 보수적으로 변이 (mutation_prob * 0.5, ratio * 0.5)
+            - 상대적 크기 기반으로 모든 레이어에 균형잡힌 변이
         """
         with torch.no_grad():
             # Actor 변이 (정책 탐색)
             for param in self.actor.parameters():
                 if np.random.rand() < mutation_prob:
-                    noise = torch.randn_like(param) * mutation_scale
+                    # 현재 파라미터 크기에 비례하는 노이즈
+                    param_scale = param.abs().mean() + 1e-8  # 0 방지
+                    noise_std = param_scale * mutation_scale_ratio
+                    noise = torch.randn_like(param) * noise_std
                     param.add_(noise)
             
             # Critic 변이 (가치 함수는 더 보수적으로)
             for param in self.critic.parameters():
                 if np.random.rand() < mutation_prob * 0.5:
-                    noise = torch.randn_like(param) * (mutation_scale * 0.5)
+                    param_scale = param.abs().mean() + 1e-8
+                    noise_std = param_scale * (mutation_scale_ratio * 0.5)
+                    noise = torch.randn_like(param) * noise_std
                     param.add_(noise)
     
     def clone(self):

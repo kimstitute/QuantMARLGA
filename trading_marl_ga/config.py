@@ -132,8 +132,8 @@ class Config:
     N_GENERATIONS = 100
     
     # Mutation 설정 (가우시안 노이즈 기반)
-    MUTATION_PROB = 0.9    # 각 파라미터가 변이할 확률 (0.0~1.0)
-    MUTATION_SCALE = 0.02  # 가우시안 노이즈 표준편차 (σ)
+    MUTATION_PROB = 0.9        # 각 파라미터가 변이할 확률 (0.0~1.0)
+    MUTATION_SCALE_RATIO = 0.05  # 가중치 크기 대비 노이즈 비율 (5% = 균형적 탐색)
     
     # RL Fine-tuning
     TOP_K = 10
