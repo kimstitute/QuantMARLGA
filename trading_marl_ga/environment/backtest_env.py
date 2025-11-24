@@ -137,9 +137,13 @@ class BacktestEnv:
                 self.data_manager = MarketDataManager(cache_dir=config.CACHE_DIR)
                 
                 # 전체 기간 데이터 로드 (한 번만)
+                # 파라미터로 받은 날짜가 있으면 사용, 없으면 config 기본값
+                actual_start = start_date or config.DATA_START_DATE
+                actual_end = end_date or config.DATA_END_DATE
+                
                 self.data_manager.initialize(
-                    start_date=config.DATA_START_DATE,
-                    end_date=config.DATA_END_DATE,
+                    start_date=actual_start,
+                    end_date=actual_end,
                     n_stocks=config.N_STOCKS
                 )
             
