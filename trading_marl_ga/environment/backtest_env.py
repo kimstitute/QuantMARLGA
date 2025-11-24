@@ -107,13 +107,14 @@ class BacktestEnv:
     - config.DATA_SOURCE = "synthetic": Random Walk로 합성 데이터
     """
     
-    def __init__(self, n_days=None, start_date=None, end_date=None, data_manager=None):
+    def __init__(self, n_days=None, start_date=None, end_date=None, data_manager=None, tickers=None):
         """
         Args:
             n_days (int): 백테스트 기간 (거래일 수) - 합성 데이터용
             start_date (str): 백테스트 시작일 (YYYY-MM-DD) - 실제 데이터용
             end_date (str): 백테스트 종료일 (YYYY-MM-DD) - 실제 데이터용
             data_manager (MarketDataManager): 이미 초기화된 데이터 관리자 (재사용)
+            tickers (list): 사용할 종목 리스트 (지정하면 해당 종목만 사용, 일관성 보장)
         """
         self.n_stocks = config.N_STOCKS
         self.initial_capital = config.INITIAL_CAPITAL
@@ -141,11 +142,20 @@ class BacktestEnv:
                 actual_start = start_date or config.DATA_START_DATE
                 actual_end = end_date or config.DATA_END_DATE
                 
-                self.data_manager.initialize(
-                    start_date=actual_start,
-                    end_date=actual_end,
-                    n_stocks=config.N_STOCKS
-                )
+                # tickers가 지정되면 해당 종목만 사용 (일관성 보장)
+                if tickers is not None:
+                    print(f"[OK] 지정된 종목 사용: {len(tickers)}개")
+                    self.data_manager.initialize(
+                        start_date=actual_start,
+                        end_date=actual_end,
+                        tickers=tickers  # 종목 리스트 전달
+                    )
+                else:
+                    self.data_manager.initialize(
+                        start_date=actual_start,
+                        end_date=actual_end,
+                        n_stocks=config.N_STOCKS
+                    )
             
             # 백테스트 기간 설정
             if start_date and end_date:

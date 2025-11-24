@@ -1056,7 +1056,66 @@ Implementation Status:
 
 ---
 
+## 🚀 Quick Start
+
+### 1. 종목 Universe 선정 (필수!)
+
+전체 기간(2021-2024)에 결측치 없는 상위 30개 종목을 선정합니다:
+
+```bash
+python trading_marl_ga/select_universe.py
+```
+
+**출력:**
+- `data/selected_tickers.pkl` - 선정된 종목 리스트
+- 학습과 테스트에서 동일한 종목 사용 → **일관성 보장**
+
+### 2. 학습 (2021-2023)
+
+선정된 종목으로 Rolling Window 학습:
+
+```bash
+python trading_marl_ga/train.py
+```
+
+**저장:**
+- `models/best_system/` - 최고 성능 모델
+- `models/metadata.pkl` - 학습 정보 + 종목 리스트
+
+### 3. 테스트 (2024)
+
+학습과 동일한 종목으로 Out-of-sample 테스트:
+
+```bash
+python trading_marl_ga/test.py
+```
+
+**자동으로:**
+- `metadata.pkl`에서 학습 종목 리스트 로드
+- 같은 종목으로 2024 데이터 백테스트
+- 벤치마크 비교 (Buy & Hold, Random, KOSPI)
+
+### ⚠️ 중요: 종목 일관성
+
+```python
+# ❌ 잘못된 방법 (이전)
+train.py:  2021-2023에서 상위 30개 선정 → [A, B, C, ...]
+test.py:   2024에서 상위 30개 선정 → [A, D, E, ...]  # 종목 다름!
+
+# ✅ 올바른 방법 (현재)
+select_universe.py:  2021-2024 전체에서 30개 선정 → [A, B, C, ...]
+train.py:            같은 30개 사용 (2021-2023 데이터)
+test.py:             같은 30개 사용 (2024 데이터)
+```
+
+**장점:**
+- ✅ 생존 편향 제거 (전체 기간 생존 종목만)
+- ✅ 학습-테스트 일관성 보장
+- ✅ 재현 가능한 실험
+
+---
+
 **문서 생성**: 2025-11-23  
-**최종 업데이트**: 2025-11-24 (하이퍼파라미터 최적화 반영)  
+**최종 업데이트**: 2025-11-24 (종목 선정 프로세스 추가)  
 **작성자**: AI Assistant
 

@@ -49,7 +49,7 @@ class MarketDataManager:
         
         print(f"[OK] MarketDataManager 초기화")
     
-    def initialize(self, start_date, end_date, n_stocks=10, lookback_days=60):
+    def initialize(self, start_date, end_date, n_stocks=10, lookback_days=60, tickers=None):
         """
         데이터 초기화 및 수집
         
@@ -58,6 +58,7 @@ class MarketDataManager:
             end_date (str): 종료일 (YYYY-MM-DD)
             n_stocks (int): 종목 수
             lookback_days (int): 팩터 계산용 과거 데이터 일수
+            tickers (list, optional): 사용할 종목 리스트 (지정 시 시가총액 선택 스킵)
         """
         # 실제 데이터는 lookback_days 이전부터 로드
         # 거래일 기준이므로 달력일로는 약 1.5배 필요 (주말/공휴일 제외)
@@ -76,7 +77,14 @@ class MarketDataManager:
         # 원래 start_date 저장 (나중에 필터링용)
         self.backtest_start_date = start_date
         
-        # 1. 종목 선택 (KOSPI 시가총액 상위, 여유분 확보)
+        # 1. 종목 선택
+        if tickers is not None:
+            # 명시적으로 지정된 종목 리스트 사용 (테스트 시)
+            print(f"[INFO] 지정된 종목 리스트 사용: {len(tickers)}개")
+            candidate_tickers = tickers
+        else:
+            # 시가총액 상위 종목 선택 (학습 시)
+            print(f"[INFO] 시가총액 상위 종목 자동 선택")
         candidate_tickers = self.price_collector.get_kospi_top_tickers(n_stocks * 2)
         
         # 2. 주가 데이터 수집 (lookback 포함)

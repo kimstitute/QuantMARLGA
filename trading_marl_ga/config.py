@@ -106,12 +106,13 @@ class Config:
     # Training Hyperparameters
     # ========================================
     BUFFER_CAPACITY = 10000
-    BATCH_SIZE = 128
+    BATCH_SIZE = 64  # Reduced from 128 for better generalization
     MIN_BUFFER_FOR_RL = BATCH_SIZE  # Start RL training from first generation
     
     # Learning Rates
     LEARNING_RATE_ACTOR = 3e-4
-    LEARNING_RATE_CRITIC = 1e-3
+    LEARNING_RATE_CRITIC = 5e-4  # Reduced from 1e-3 for stability
+    ENCODER_LEARNING_RATE = 3e-4  # Shared encoder learning rate
     
     # RL Parameters
     GAMMA = 0.99
@@ -144,7 +145,7 @@ class Config:
     # RL fine-tuning
     TOP_K = 10
     RL_EPISODES = 5
-    RL_UPDATES = 50
+    RL_UPDATES = 200  # Increased from 50 for sufficient learning (RACE-proportional)
     
     # ========================================
     # Data Pipeline

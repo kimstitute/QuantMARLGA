@@ -28,7 +28,8 @@ class GATrainer:
     """
     
     def __init__(self, population_size=None, n_generations=None, 
-                 child_mutation_prob=None, param_mutation_prob=None, mutation_scale_ratio=None):
+                 child_mutation_prob=None, param_mutation_prob=None, mutation_scale_ratio=None,
+                 tickers=None):
         """
         Args:
             population_size (int): Population 크기 (기본: config.POPULATION_SIZE)
@@ -36,8 +37,10 @@ class GATrainer:
             child_mutation_prob (float): 자식이 mutation 받을 확률 (0.0~1.0)
             param_mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
             mutation_scale_ratio (float): 가중치 크기 대비 노이즈 비율
+            tickers (list): 사용할 종목 리스트 (지정 시 학습/테스트 일관성 보장)
         """
         self.population_size = population_size or config.POPULATION_SIZE
+        self.tickers = tickers  # 종목 리스트 저장
         self.n_generations = n_generations or config.N_GENERATIONS
         self.child_mutation_prob = child_mutation_prob or config.CHILD_MUTATION_PROB
         self.param_mutation_prob = param_mutation_prob or config.PARAM_MUTATION_PROB
@@ -558,7 +561,7 @@ class GATrainer:
             print(f"전체 학습 기간: {first_start} ~ {last_end}")
             
             # 전체 기간 환경 생성 (한 번만, 전체 기간 데이터 로드)
-            self.env = BacktestEnv(start_date=first_start, end_date=last_end)
+            self.env = BacktestEnv(start_date=first_start, end_date=last_end, tickers=self.tickers)
             print(f"[OK] 전체 데이터 로드 완료\n")
         
         for gen in range(1, self.n_generations + 1):
@@ -579,7 +582,8 @@ class GATrainer:
                 print(f"\n[환경 생성] {start_date} ~ {end_date}")
                 self.env = BacktestEnv(
                     start_date=start_date,
-                    end_date=end_date
+                    end_date=end_date,
+                    tickers=self.tickers
                 )
             print(f"[OK] 백테스트 환경 준비 완료")
             

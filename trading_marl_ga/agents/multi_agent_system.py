@@ -45,7 +45,8 @@ class MultiAgentSystem:
                     portfolio_obs_dim=config.PORTFOLIO_OBS_DIM,
                     hedging_obs_dim=config.HEDGING_OBS_DIM,
                     hidden_dim=config.ENCODER_HIDDEN_DIM,
-                    device=config.DEVICE
+                    device=config.DEVICE,
+                    lr=config.ENCODER_LEARNING_RATE
                 )
         
         # 4개 에이전트 초기화

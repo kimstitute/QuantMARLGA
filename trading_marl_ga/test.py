@@ -37,6 +37,7 @@ print(f"{'='*80}")
 
 # 메타데이터 로드
 metadata_path = "models/metadata.pkl"
+tickers = None  # 기본값
 if os.path.exists(metadata_path):
     with open(metadata_path, 'rb') as f:
         metadata = pickle.load(f)
@@ -46,6 +47,13 @@ if os.path.exists(metadata_path):
     print(f"  Population: {metadata['population_size']}")
     print(f"  최고 Fitness: {metadata['best_fitness']:.4f}")
     print(f"  최종 평균 Fitness: {metadata['final_mean_fitness']:.4f}")
+    
+    # 학습에 사용된 종목 리스트 로드 (일관성 보장)
+    if 'tickers' in metadata:
+        tickers = metadata['tickers']
+        print(f"  학습 종목: {len(tickers)}개 (상위 5개: {', '.join(tickers[:5])})")
+    else:
+        print(f"  ⚠️ 종목 리스트 없음 - 자동 선정 모드")
 
 # 모델 로드
 best_system = MultiAgentSystem()  # system_id 불필요 (테스트용)
@@ -61,7 +69,9 @@ print(f"{'='*80}")
 
 # 테스트 환경 생성
 print(f"\n[테스트 환경 생성]")
-test_env = BacktestEnv(start_date=TEST_START, end_date=TEST_END)
+if tickers is not None:
+    print(f"  ✅ 학습과 동일한 {len(tickers)}개 종목 사용")
+test_env = BacktestEnv(start_date=TEST_START, end_date=TEST_END, tickers=tickers)
 print(f"  기간: {TEST_START} ~ {TEST_END}")
 print(f"  [OK] 데이터 로드 완료")
 

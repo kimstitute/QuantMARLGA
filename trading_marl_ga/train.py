@@ -8,10 +8,31 @@ GA-MARL 시스템 학습 (Rolling Window)
 import os
 from evolution.ga_trainer import GATrainer
 from config import config
+from select_universe import load_universe
 
 print("="*80)
 print("GA-MARL 시스템 학습 (Rolling Window)")
 print("="*80)
+
+# ========================================
+# 종목 Universe 로드
+# ========================================
+print(f"\n[종목 Universe 로드]")
+print("-" * 80)
+
+try:
+    universe_data = load_universe("data/selected_tickers.pkl")
+    tickers = universe_data['tickers']
+    print(f"✅ 종목 리스트 로드 완료: {len(tickers)}개")
+    print(f"   선정 일시: {universe_data['selection_date']}")
+    print(f"   전체 기간: {universe_data['full_start_date']} ~ {universe_data['full_end_date']}")
+    print(f"   상위 5개: {', '.join(tickers[:5])}")
+except FileNotFoundError as e:
+    print(f"❌ 종목 Universe 파일이 없습니다!")
+    print(f"   먼저 'python trading_marl_ga/select_universe.py'를 실행하세요.")
+    exit(1)
+
+print("-" * 80)
 
 # 설정
 POPULATION_SIZE = config.POPULATION_SIZE
@@ -37,7 +58,8 @@ trainer = GATrainer(
     n_generations=N_GENERATIONS,
     child_mutation_prob=config.CHILD_MUTATION_PROB,
     param_mutation_prob=config.PARAM_MUTATION_PROB,
-    mutation_scale_ratio=config.MUTATION_SCALE_RATIO
+    mutation_scale_ratio=config.MUTATION_SCALE_RATIO,
+    tickers=tickers  # 선정된 종목 리스트 전달
 )
 
 best_system, fitness_history = trainer.train(
@@ -105,6 +127,8 @@ metadata = {
     'best_fitness': trainer.best_fitness,
     'final_mean_fitness': fitness_history[-1]['mean_fitness'] if fitness_history else 0,
     'train_period': '2021-2023',
+    'tickers': tickers,  # 학습에 사용된 종목 리스트
+    'num_tickers': len(tickers),
 }
 metadata_path = "models/metadata.pkl"
 with open(metadata_path, 'wb') as f:
