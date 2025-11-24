@@ -542,6 +542,22 @@ class GATrainer:
         print(f"RL 업데이트/세대: {rl_updates}회")
         print(f"{'='*60}\n")
         
+        # ===========================================================
+        # 전체 기간 데이터를 한 번만 로드 (Rolling Window용)
+        # ===========================================================
+        if config.DATA_SOURCE == "real":
+            print(f"\n[전체 데이터 로드]")
+            # 첫 번째 세대 날짜 계산
+            first_start, _ = self._get_generation_dates(0)
+            # 마지막 세대 날짜 계산
+            _, last_end = self._get_generation_dates(self.n_generations - 1)
+            
+            print(f"전체 학습 기간: {first_start} ~ {last_end}")
+            
+            # 전체 기간 환경 생성 (한 번만)
+            self.env = BacktestEnv()
+            print(f"[OK] 전체 데이터 로드 완료\n")
+        
         for gen in range(1, self.n_generations + 1):
             # 세대별 학습 기간 계산
             start_date, end_date = self._get_generation_dates(gen - 1)
@@ -551,12 +567,17 @@ class GATrainer:
             print(f"학습 기간: {start_date} ~ {end_date}")
             print(f"{'='*60}")
             
-            # 환경 재생성 (매 세대마다 다른 기간)
-            print(f"\n[환경 생성] {start_date} ~ {end_date}")
-            self.env = BacktestEnv(
-                start_date=start_date,
-                end_date=end_date
-            )
+            # 환경 기간 변경 (데이터 재사용)
+            if config.DATA_SOURCE == "real":
+                print(f"\n[백테스트 기간 변경] {start_date} ~ {end_date}")
+                self.env.set_period(start_date, end_date)
+            else:
+                # 합성 데이터는 매번 새로 생성
+                print(f"\n[환경 생성] {start_date} ~ {end_date}")
+                self.env = BacktestEnv(
+                    start_date=start_date,
+                    end_date=end_date
+                )
             print(f"[OK] 백테스트 환경 준비 완료")
             
             # Hybrid Learning 순서 (RACE 방식 참고)

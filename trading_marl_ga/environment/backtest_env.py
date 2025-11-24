@@ -107,12 +107,13 @@ class BacktestEnv:
     - config.DATA_SOURCE = "synthetic": Random Walk로 합성 데이터
     """
     
-    def __init__(self, n_days=None, start_date=None, end_date=None):
+    def __init__(self, n_days=None, start_date=None, end_date=None, data_manager=None):
         """
         Args:
-            n_days (int): 백테스트 기간 (거래일 수) - start_date/end_date 없을 때
-            start_date (str): 시작 날짜 (YYYY-MM-DD) - Rolling Window용
-            end_date (str): 종료 날짜 (YYYY-MM-DD) - Rolling Window용
+            n_days (int): 백테스트 기간 (거래일 수) - 합성 데이터용
+            start_date (str): 백테스트 시작일 (YYYY-MM-DD) - 실제 데이터용
+            end_date (str): 백테스트 종료일 (YYYY-MM-DD) - 실제 데이터용
+            data_manager (MarketDataManager): 이미 초기화된 데이터 관리자 (재사용)
         """
         self.n_stocks = config.N_STOCKS
         self.initial_capital = config.INITIAL_CAPITAL
@@ -126,26 +127,29 @@ class BacktestEnv:
         # ===========================================================
         if config.DATA_SOURCE == "real":
             print("[OK] 데이터 소스: 실제 시장 데이터")
-            self.data_manager = MarketDataManager(cache_dir=config.CACHE_DIR)
             
-            # Rolling Window: start_date, end_date 우선 사용
-            if start_date and end_date:
-                self.data_manager.initialize(
-                    start_date=start_date,
-                    end_date=end_date,
-                    n_stocks=config.N_STOCKS
-                )
+            # 데이터 관리자 재사용 또는 새로 생성
+            if data_manager is not None:
+                print("[OK] 기존 MarketDataManager 재사용")
+                self.data_manager = data_manager
             else:
-                # 기존 방식: config의 DATE 사용
+                print("[OK] 새 MarketDataManager 생성")
+                self.data_manager = MarketDataManager(cache_dir=config.CACHE_DIR)
+                
+                # 전체 기간 데이터 로드 (한 번만)
                 self.data_manager.initialize(
                     start_date=config.DATA_START_DATE,
                     end_date=config.DATA_END_DATE,
                     n_stocks=config.N_STOCKS
                 )
             
-            self.trading_days = self.data_manager.common_dates
+            # 백테스트 기간 설정
+            if start_date and end_date:
+                self.data_manager.set_backtest_period(start_date, end_date)
+            
+            self.trading_days = self.data_manager.get_backtest_dates()
             self.n_days = len(self.trading_days) if n_days is None else min(n_days, len(self.trading_days))
-            print(f"[OK] 백테스트 기간: {self.n_days}일 (최대: {len(self.trading_days)}일)")
+            print(f"[OK] 백테스트 기간: {self.n_days}일")
         else:
             print("[OK] 데이터 소스: 합성 데이터 (Random Walk)")
             self.data_manager = None
@@ -183,6 +187,25 @@ class BacktestEnv:
         
         return prices
     
+    def set_period(self, start_date, end_date):
+        """
+        백테스트 기간 변경 (Rolling Window용)
+        
+        Args:
+            start_date (str): 시작일 (YYYY-MM-DD)
+            end_date (str): 종료일 (YYYY-MM-DD)
+        """
+        if config.DATA_SOURCE == "real":
+            self.data_manager.set_backtest_period(start_date, end_date)
+            self.trading_days = self.data_manager.get_backtest_dates()
+            self.n_days = len(self.trading_days)
+            
+            # Reward calculator 리셋
+            if hasattr(self, 'reward_calculator'):
+                self.reward_calculator.reset()
+        else:
+            raise ValueError("set_period()는 실제 데이터 모드에서만 사용 가능합니다.")
+    
     def reset(self):
         """
         환경 리셋
@@ -196,6 +219,10 @@ class BacktestEnv:
         self.portfolio_value = self.initial_capital
         self.portfolio_history = [self.initial_capital]
         self.last_rebalance_day = 0  # 마지막 리밸런싱 날짜
+        
+        # Reward calculator 리셋 (새 에피소드 시작)
+        if hasattr(self, 'reward_calculator'):
+            self.reward_calculator.reset()
         
         return self._get_observation()
     

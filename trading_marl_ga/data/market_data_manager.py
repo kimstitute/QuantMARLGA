@@ -44,6 +44,8 @@ class MarketDataManager:
         self.opendart_data = None  # 재무제표 데이터
         self.financial_ratios = None  # 계산된 재무 비율
         self.common_dates = None
+        self.all_dates = None  # 전체 날짜 (lookback 포함)
+        self.backtest_dates = None  # 백테스트용 날짜 (슬라이싱)
         
         print(f"[OK] MarketDataManager 초기화")
     
@@ -487,6 +489,39 @@ class MarketDataManager:
         if self.common_dates:
             return self.common_dates[0], self.common_dates[-1]
         return None, None
+    
+    def set_backtest_period(self, start_date, end_date):
+        """
+        백테스트 기간 설정 (전체 데이터에서 슬라이싱)
+        
+        Args:
+            start_date (str): 백테스트 시작일 (YYYY-MM-DD)
+            end_date (str): 백테스트 종료일 (YYYY-MM-DD)
+        """
+        start_date = pd.to_datetime(start_date)
+        end_date = pd.to_datetime(end_date)
+        
+        # common_dates에서 해당 기간만 필터링
+        self.backtest_dates = [
+            d for d in self.common_dates 
+            if start_date <= d <= end_date
+        ]
+        
+        if len(self.backtest_dates) == 0:
+            raise ValueError(f"백테스트 기간 {start_date.date()} ~ {end_date.date()}에 거래일이 없습니다!")
+        
+        print(f"\n[백테스트 기간 설정]")
+        print(f"  기간: {self.backtest_dates[0].date()} ~ {self.backtest_dates[-1].date()}")
+        print(f"  거래일: {len(self.backtest_dates)}일")
+    
+    def get_backtest_dates(self):
+        """
+        현재 설정된 백테스트 기간의 날짜 리스트 반환
+        
+        Returns:
+            list: 백테스트 날짜 리스트
+        """
+        return self.backtest_dates if self.backtest_dates else self.common_dates
     
     def get_ticker_names(self):
         """
