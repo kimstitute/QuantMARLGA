@@ -12,6 +12,8 @@ print(f"\n[환경 설정]")
 print(f"  종목 수 (N_STOCKS):        {config.N_STOCKS}")
 print(f"  초기 자본:                 {config.INITIAL_CAPITAL:,}원")
 print(f"  거래 비용:                 {config.TRANSACTION_COST*100:.2f}%")
+rebalance_label = {1: '매일', 5: '주간', 20: '월간'}.get(config.REBALANCE_PERIOD, f'{config.REBALANCE_PERIOD}일')
+print(f"  리밸런싱 주기:             {config.REBALANCE_PERIOD}거래일 ({rebalance_label})")
 
 print(f"\n[관측 차원]")
 print(f"  Value 관측:                {config.VALUE_OBS_DIM}")

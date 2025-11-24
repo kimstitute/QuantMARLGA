@@ -182,6 +182,7 @@ class BacktestEnv:
         self.positions = np.zeros(self.n_stocks)  # 주식 보유 수량
         self.portfolio_value = self.initial_capital
         self.portfolio_history = [self.initial_capital]
+        self.last_rebalance_day = 0  # 마지막 리밸런싱 날짜
         
         return self._get_observation()
     
@@ -243,12 +244,21 @@ class BacktestEnv:
         final_weights = actions['final_weights']
         
         # =============================================================
-        # 정수 주식 제약 + 현금 부족 방지 (현실적 제약)
+        # 리밸런싱 주기 체크
         # =============================================================
-        # 1. 현재 보유 주식 매도로 확보 가능한 현금
-        sell_positions = np.maximum(0, self.positions)  # 매도 가능한 주식
-        sell_value = (sell_positions * current_prices).sum()
-        total_cash = self.cash + sell_value  # 총 사용 가능 금액
+        should_rebalance = (self.current_day - self.last_rebalance_day) >= config.REBALANCE_PERIOD
+        
+        if should_rebalance:
+            # 리밸런싱 실행
+            self.last_rebalance_day = self.current_day
+            
+            # =============================================================
+            # 정수 주식 제약 + 현금 부족 방지 (현실적 제약)
+            # =============================================================
+            # 1. 현재 보유 주식 매도로 확보 가능한 현금
+            sell_positions = np.maximum(0, self.positions)  # 매도 가능한 주식
+            sell_value = (sell_positions * current_prices).sum()
+            total_cash = self.cash + sell_value  # 총 사용 가능 금액
         
         # 2. 수수료 여유분 확보 (최대 거래액의 0.3% 여유)
         # 예상 최대 수수료를 고려하여 safe margin 확보
@@ -265,23 +275,28 @@ class BacktestEnv:
         # 4. 실제 남은 현금 (safety_margin 복원)
         remaining_cash += safety_margin
         
-        # 3. 거래 실행
-        trades = target_positions - self.positions  # 거래량 (양수=매수, 음수=매도)
-        trade_values = trades * current_prices  # 거래 금액
-        trade_costs = np.abs(trade_values).sum() * config.TRANSACTION_COST  # 수수료
-        
-        # 포지션 및 현금 업데이트
-        self.positions = target_positions
-        
-        # 현금 재계산 (정수 제약 적용 후)
-        # remaining_cash는 이미 거래 후 남은 현금
-        # 수수료만 추가로 차감
-        self.cash = remaining_cash - trade_costs
-        
-        # 거래 직후 포트폴리오 가치 업데이트 (당일 가격 기준)
-        stock_value_after_trade = (self.positions * current_prices).sum()
-        self.portfolio_value = self.cash + stock_value_after_trade
-        # portfolio_history는 다음 날 가격 기준으로 추가될 것임
+            # 3. 거래 실행
+            trades = target_positions - self.positions  # 거래량 (양수=매수, 음수=매도)
+            trade_values = trades * current_prices  # 거래 금액
+            trade_costs = np.abs(trade_values).sum() * config.TRANSACTION_COST  # 수수료
+            
+            # 포지션 및 현금 업데이트
+            self.positions = target_positions
+            
+            # 현금 재계산 (정수 제약 적용 후)
+            # remaining_cash는 이미 거래 후 남은 현금
+            # 수수료만 추가로 차감
+            self.cash = remaining_cash - trade_costs
+            
+            # 거래 직후 포트폴리오 가치 업데이트 (당일 가격 기준)
+            stock_value_after_trade = (self.positions * current_prices).sum()
+            self.portfolio_value = self.cash + stock_value_after_trade
+            # portfolio_history는 다음 날 가격 기준으로 추가될 것임
+        else:
+            # 리밸런싱 주기가 아닌 경우: 포지션 유지, 가격 변동만 반영
+            # 거래 비용 없음, 포지션 그대로
+            stock_value = (self.positions * current_prices).sum()
+            self.portfolio_value = self.cash + stock_value
         
         # 다음 날로 이동
         self.current_day += 1

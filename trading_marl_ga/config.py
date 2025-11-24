@@ -64,6 +64,11 @@ class Config:
     INITIAL_CAPITAL = 10_000_000
     TRANSACTION_COST = 0.002  # 0.2% (증권사 수수료 + 세금 고려)
     
+    # Rebalancing Period (리밸런싱 주기)
+    # 1 = 매일, 5 = 주간 (1주), 20 = 월간 (1개월)
+    # 더 긴 주기 = 거래 비용 감소, 더 안정적
+    REBALANCE_PERIOD = 5  # 기본값: 주간 (5거래일)
+    
     # ========================================
     # Agent Observation Dimensions (동적 조정)
     # ========================================
