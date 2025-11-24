@@ -12,8 +12,9 @@ CODE_AUDIT_REPORT.md
 CODE_REVIEW_RESPONSE.md
 LOG_ANALYSIS_VERIFICATION.md
 
-# Colab related files
-# (colab_train_test.py and COLAB_QUICKSTART.md are tracked)
+# Colab related files (excluded from repo)
+colab_*.py
+COLAB_*.md
 
 # Reference materials
 src/
