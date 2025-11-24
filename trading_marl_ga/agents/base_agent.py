@@ -64,7 +64,7 @@ class BaseAgent:
         # ============================================
         self.use_amp = config.USE_AMP
         if self.use_amp:
-            self.scaler = GradScaler('cuda' if torch.cuda.is_available() else 'cpu')
+            self.scaler = GradScaler()
         else:
             self.scaler = None
     
@@ -123,9 +123,9 @@ class BaseAgent:
             next_values = self.critic_target(next_obs)  # (batch_size, 1)
             td_target = rewards + (1 - dones) * config.GAMMA * next_values  # (batch_size, 1)
         
-        # Mixed Precision Training (Colab 최적화)
+        # Mixed Precision Training
         if self.use_amp:
-            with autocast():
+            with autocast(device_type='cuda'):
                 # Current Q-value
                 current_values = self.critic(obs)
                 # Critic loss (MSE)
@@ -164,9 +164,9 @@ class BaseAgent:
             # 정규화 (학습 안정화)
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        # Mixed Precision Training (Colab 최적화)
+        # Mixed Precision Training
         if self.use_amp:
-            with autocast():
+            with autocast(device_type='cuda'):
                 # Actor 출력
                 predicted_actions = self.actor(obs)
                 # Actor loss (Advantage-weighted MSE)
