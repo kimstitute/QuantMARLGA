@@ -40,6 +40,12 @@ class IndependentRewardCalculator:
             'hedging': {'return': 0.2, 'sharpe': 0.4, 'drawdown': 0.4},
         }
     
+    def reset(self):
+        """
+        리셋 (상태 저장 없음, 호환성 위해 구현)
+        """
+        pass
+    
     def calculate_rewards(self, actions, portfolio_return, sharpe_ratio, max_drawdown, 
                          stock_returns, market_data):
         """
