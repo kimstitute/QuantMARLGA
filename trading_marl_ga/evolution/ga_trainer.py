@@ -252,13 +252,14 @@ class GATrainer:
         # 현재 세대 Fitness 평가
         fitnesses = [system.fitness for system in self.population]
         
-        # Elitism: 상위 10% 보존
-        n_elite = max(1, int(self.population_size * 0.1))
+        # Elitism: 상위 ELITE_FRACTION(20%) 보존 (RACE 논문과 동일)
+        n_elite = max(1, int(self.population_size * config.ELITE_FRACTION))
         elite_indices = np.argsort(fitnesses)[-n_elite:]
         elites = [self.population[i].clone() for i in elite_indices]
         
         if verbose:
-            print(f"  [Elitism] 상위 {n_elite}개 보존: 팀 {list(elite_indices)}")
+            elite_ratio = n_elite / self.population_size * 100
+            print(f"  [Elitism] 상위 {n_elite}개 보존 ({elite_ratio:.0f}%): 팀 {list(elite_indices)}")
             print(f"            Fitness: {[f'{fitnesses[i]:.3f}' for i in elite_indices]}")
         
         # 새로운 Population 생성
