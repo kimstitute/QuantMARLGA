@@ -74,6 +74,19 @@ class Config:
     REBALANCE_PERIOD = 5  # 기본값: 주간 (5거래일)
     
     # ========================================
+    # Rolling Window Training (과적합 방지)
+    # ========================================
+    # 각 세대마다 다른 시장 기간으로 학습하여 과적합 방지
+    # 예: 세대1=2021-Q1, 세대2=2021-Q2, ..., 세대12=2023-Q4
+    ROLLING_TRAIN_MONTHS = 3  # 각 세대 학습 기간 (3개월 = 분기별)
+    START_YEAR = 2021         # 학습 시작 연도
+    START_MONTH = 1           # 학습 시작 월
+    
+    # 테스트 기간 (학습에 절대 사용 안 함!)
+    TEST_START = "2024-01-01"
+    TEST_END = "2024-06-30"
+    
+    # ========================================
     # Agent Observation Dimensions (동적 조정)
     # ========================================
     # 병렬 + 융합 구조 (N_STOCKS에 자동 비례)
@@ -99,14 +112,14 @@ class Config:
     # Replay Buffer
     BUFFER_CAPACITY = 10000  # 50000 → 10000 (현실적인 크기로 축소)
     
-    # Batch Size (고정: 256)
-    # Off-policy RL 표준 배치 크기
-    BATCH_SIZE = 256
+    # Batch Size (128)
+    # Rolling window에서 1세대부터 RL 학습 가능하도록 축소
+    # 3개월 × 12회 리밸런싱 × 11팀 = 132 transitions > 128 ✅
+    BATCH_SIZE = 128  # 256 → 128
     
     # RL 학습 시작 최소 버퍼 크기
-    # BATCH_SIZE 이상이어야 샘플링 가능 (replay_buffer.sample()의 요구사항)
-    # 1세대 = 11팀 × 200일+ = 2200+ transitions이므로 충분
-    MIN_BUFFER_FOR_RL = BATCH_SIZE  # 256
+    # BATCH_SIZE와 동일하게 설정하여 1세대부터 RL 학습 가능
+    MIN_BUFFER_FOR_RL = BATCH_SIZE  # 128
     
     # Learning Rates
     LEARNING_RATE_ACTOR = 3e-4
@@ -133,7 +146,7 @@ class Config:
     # Genetic Algorithm
     # ========================================
     POPULATION_SIZE = 10  # 20 → 10 (빠른 실험, 종목 수 증가로 보완)
-    N_GENERATIONS = 100
+    N_GENERATIONS = 12  # 100 → 12 (Rolling Window: 분기별, 2021-2023)
     
     # Elite 비율 (RACE 논문: 0.2 = 20%, 우리: 0.3 = 30%)
     # 주식 투자는 노이즈가 많으므로 더 보수적으로 설정

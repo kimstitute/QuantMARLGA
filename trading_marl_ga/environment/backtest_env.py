@@ -107,12 +107,13 @@ class BacktestEnv:
     - config.DATA_SOURCE = "synthetic": Random Walk로 합성 데이터
     """
     
-    def __init__(self, n_days=50):
+    def __init__(self, n_days=None, start_date=None, end_date=None):
         """
         Args:
-            n_days (int): 백테스트 기간 (거래일 수)
+            n_days (int): 백테스트 기간 (거래일 수) - start_date/end_date 없을 때
+            start_date (str): 시작 날짜 (YYYY-MM-DD) - Rolling Window용
+            end_date (str): 종료 날짜 (YYYY-MM-DD) - Rolling Window용
         """
-        self.n_days = n_days
         self.n_stocks = config.N_STOCKS
         self.initial_capital = config.INITIAL_CAPITAL
         
@@ -126,18 +127,30 @@ class BacktestEnv:
         if config.DATA_SOURCE == "real":
             print("[OK] 데이터 소스: 실제 시장 데이터")
             self.data_manager = MarketDataManager(cache_dir=config.CACHE_DIR)
-            self.data_manager.initialize(
-                start_date=config.DATA_START_DATE,
-                end_date=config.DATA_END_DATE,
-                n_stocks=config.N_STOCKS
-            )
+            
+            # Rolling Window: start_date, end_date 우선 사용
+            if start_date and end_date:
+                self.data_manager.initialize(
+                    start_date=start_date,
+                    end_date=end_date,
+                    n_stocks=config.N_STOCKS
+                )
+            else:
+                # 기존 방식: config의 DATE 사용
+                self.data_manager.initialize(
+                    start_date=config.DATA_START_DATE,
+                    end_date=config.DATA_END_DATE,
+                    n_stocks=config.N_STOCKS
+                )
+            
             self.trading_days = self.data_manager.common_dates
-            self.n_days = min(n_days, len(self.trading_days))
+            self.n_days = len(self.trading_days) if n_days is None else min(n_days, len(self.trading_days))
             print(f"[OK] 백테스트 기간: {self.n_days}일 (최대: {len(self.trading_days)}일)")
         else:
             print("[OK] 데이터 소스: 합성 데이터 (Random Walk)")
             self.data_manager = None
             self.trading_days = None
+            self.n_days = n_days or 50  # 기본값
             self.price_history = self._generate_synthetic_prices()
             print(f"[OK] 백테스트 기간: {self.n_days}일")
         

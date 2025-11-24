@@ -2,10 +2,13 @@
 Genetic Algorithm Trainer
 
 GA + MARL 하이브리드 학습 (RACE 방식 참고)
+Rolling Window Training으로 과적합 방지
 """
 
 import numpy as np
 import copy
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from tqdm import tqdm
 from multiprocessing import Pool
 from agents.multi_agent_system import MultiAgentSystem
@@ -25,28 +28,26 @@ class GATrainer:
     """
     
     def __init__(self, population_size=None, n_generations=None, 
-                 env_n_days=200, mutation_prob=None, mutation_scale_ratio=None):
+                 mutation_prob=None, mutation_scale_ratio=None):
         """
         Args:
             population_size (int): Population 크기 (기본: config.POPULATION_SIZE)
             n_generations (int): 총 세대 수 (기본: config.N_GENERATIONS)
-            env_n_days (int): 백테스트 기간 (일)
             mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
             mutation_scale_ratio (float): 가중치 크기 대비 노이즈 비율
         """
         self.population_size = population_size or config.POPULATION_SIZE
         self.n_generations = n_generations or config.N_GENERATIONS
-        self.env_n_days = env_n_days
         self.mutation_prob = mutation_prob or config.MUTATION_PROB
         self.mutation_scale_ratio = mutation_scale_ratio or config.MUTATION_SCALE_RATIO
         
         # Population 초기화
         print(f"\n{'='*60}")
-        print(f"GA Trainer 초기화")
+        print(f"GA Trainer 초기화 (Rolling Window)")
         print(f"{'='*60}")
         print(f"Population 크기: {self.population_size}")
         print(f"세대 수: {self.n_generations}")
-        print(f"백테스트 기간: {self.env_n_days}일")
+        print(f"학습 윈도우: {config.ROLLING_TRAIN_MONTHS}개월 (분기별)")
         print(f"돌연변이 확률: {self.mutation_prob}")
         print(f"상대적 노이즈 비율: {self.mutation_scale_ratio*100:.1f}%")
         
@@ -62,9 +63,8 @@ class GATrainer:
         print(f"[OK] MARL 팀 생성: 1개")
         print(f"[OK] 총 팀 수: {len(self.population) + 1}개")
         
-        # 백테스트 환경 (재사용)
-        self.env = BacktestEnv(n_days=self.env_n_days)
-        print(f"[OK] 백테스트 환경 준비 완료")
+        # 백테스트 환경 (각 세대마다 재생성할 것이므로 None으로 초기화)
+        self.env = None
         
         # Shared Replay Buffer
         self.shared_replay_buffer = SharedReplayBuffer(capacity=config.BUFFER_CAPACITY)
@@ -89,6 +89,26 @@ class GATrainer:
         self.best_fitness = -np.inf
         
         print(f"\n")
+    
+    def _get_generation_dates(self, generation):
+        """
+        세대별 학습 기간 계산 (Rolling Window)
+        
+        Args:
+            generation (int): 세대 번호 (0부터 시작)
+        
+        Returns:
+            tuple: (start_date, end_date) 문자열
+        """
+        # 시작 날짜 계산
+        start_date = datetime(config.START_YEAR, config.START_MONTH, 1)
+        start_date += relativedelta(months=generation * config.ROLLING_TRAIN_MONTHS)
+        
+        # 종료 날짜 계산 (시작 + 윈도우 크기)
+        end_date = start_date + relativedelta(months=config.ROLLING_TRAIN_MONTHS)
+        end_date -= timedelta(days=1)  # 마지막 날은 포함
+        
+        return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
     
     def evaluate_fitness(self, system, verbose=False):
         """
@@ -505,25 +525,39 @@ class GATrainer:
     
     def train(self, rl_updates=10):
         """
-        전체 학습 루프 (GA + MARL Hybrid)
+        전체 학습 루프 (GA + MARL Hybrid with Rolling Window)
         
-        처음부터 GA + RL Hybrid 동시 수행 (RACE 논문 방식 참고)
+        각 세대마다 다른 시장 기간으로 학습하여 과적합 방지
+        처음부터 GA + RL Hybrid 동시 수행
         
         Args:
             rl_updates (int): 매 세대 RL 업데이트 횟수
         """
         print(f"\n{'='*60}")
-        print(f"GA-MARL Hybrid 학습 시작 (처음부터 동시 수행)")
+        print(f"GA-MARL Hybrid 학습 시작 (Rolling Window)")
         print(f"{'='*60}")
         print(f"세대 수: {self.n_generations}")
+        print(f"학습 윈도우: {config.ROLLING_TRAIN_MONTHS}개월 (분기별)")
         print(f"Population: {len(self.population)}개 EA 팀 + 1개 MARL 팀")
         print(f"RL 업데이트/세대: {rl_updates}회")
         print(f"{'='*60}\n")
         
         for gen in range(1, self.n_generations + 1):
+            # 세대별 학습 기간 계산
+            start_date, end_date = self._get_generation_dates(gen - 1)
+            
             print(f"\n{'='*60}")
             print(f"세대 {gen}/{self.n_generations}")
+            print(f"학습 기간: {start_date} ~ {end_date}")
             print(f"{'='*60}")
+            
+            # 환경 재생성 (매 세대마다 다른 기간)
+            print(f"\n[환경 생성] {start_date} ~ {end_date}")
+            self.env = BacktestEnv(
+                start_date=start_date,
+                end_date=end_date
+            )
+            print(f"[OK] 백테스트 환경 준비 완료")
             
             # Hybrid Learning 순서 (RACE 방식 참고)
             
