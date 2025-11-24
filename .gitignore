@@ -7,6 +7,7 @@
 RACE.md
 CHANGELOG_PARALLEL.md
 IMPLEMENTATION_STATUS.md
+COLAB_GUIDE.md
 
 # Reference materials
 src/
@@ -135,6 +136,16 @@ Desktop.ini
 .coverage
 htmlcov/
 .tox/
+
+# Test files
+trading_marl_ga/test_*.py
+trading_marl_ga/*_test.py
+trading_marl_ga/quick_*.py
+trading_marl_ga/analyze_*.py
+
+# Keep main test scripts
+!trading_marl_ga/test.py
+!trading_marl_ga/test2.py
 
 # ========================================
 # Temporary files
