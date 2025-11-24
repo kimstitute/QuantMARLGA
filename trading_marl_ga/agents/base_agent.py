@@ -64,7 +64,8 @@ class BaseAgent:
         # ============================================
         self.use_amp = config.USE_AMP
         if self.use_amp:
-            self.scaler = GradScaler()
+            # PyTorch 2.0+ API: 명시적으로 device 지정
+            self.scaler = GradScaler('cuda' if torch.cuda.is_available() else 'cpu')
         else:
             self.scaler = None
     

@@ -87,22 +87,34 @@ class MarketDataManager:
             use_cache=True
         )
         
-        # 3. 데이터 기간이 충분한 종목만 선택 (최소 200일 이상)
-        min_data_days = max(200, lookback_days + 100)  # 최소 200일 또는 lookback + 100일
+        # 3. 데이터 기간이 충분한 종목만 선택
+        # - 최소 200일 이상
+        # - start_date 이전부터 데이터 존재 (Rolling Window 전체 기간 커버)
+        min_data_days = max(200, lookback_days + 100)
+        start_date_dt = pd.to_datetime(start_date)
         valid_tickers = []
         valid_price_data = {}
         
-        print(f"\n[데이터 필터링] 최소 {min_data_days}일 이상 보유 종목 선택")
+        print(f"\n[데이터 필터링] 최소 {min_data_days}일 이상 & {start_date} 이전부터 데이터 존재")
         for ticker in candidate_tickers:
             if ticker in candidate_price_data:
-                data_len = len(candidate_price_data[ticker])
-                if data_len >= min_data_days:
+                df = candidate_price_data[ticker]
+                data_len = len(df)
+                data_start = df.index[0]
+                
+                # 조건: 최소 일수 + start_date 이전부터 존재
+                if data_len >= min_data_days and data_start <= start_date_dt:
                     valid_tickers.append(ticker)
-                    valid_price_data[ticker] = candidate_price_data[ticker]
+                    valid_price_data[ticker] = df
                     if len(valid_tickers) >= n_stocks:
                         break  # 필요한 개수만큼 확보하면 중단
                 else:
-                    print(f"  [SKIP] {ticker}: 데이터 부족 ({data_len}일 < {min_data_days}일)")
+                    skip_reason = []
+                    if data_len < min_data_days:
+                        skip_reason.append(f"데이터 부족 ({data_len}일 < {min_data_days}일)")
+                    if data_start > start_date_dt:
+                        skip_reason.append(f"늦은 시작 ({data_start.date()} > {start_date})")
+                    print(f"  [SKIP] {ticker}: {', '.join(skip_reason)}")
         
         if len(valid_tickers) < n_stocks:
             print(f"[WARNING]  요청 종목 수({n_stocks}개)보다 적음 ({len(valid_tickers)}개만 확보)")
@@ -501,9 +513,9 @@ class MarketDataManager:
         start_date = pd.to_datetime(start_date)
         end_date = pd.to_datetime(end_date)
         
-        # common_dates에서 해당 기간만 필터링
+        # all_dates에서 해당 기간만 필터링 (전체 데이터 범위에서)
         self.backtest_dates = [
-            d for d in self.common_dates 
+            d for d in self.all_dates 
             if start_date <= d <= end_date
         ]
         

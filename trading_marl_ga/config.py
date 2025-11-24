@@ -167,7 +167,8 @@ class Config:
     DATA_SOURCE = "real"  # "synthetic" or "real"
     CACHE_DIR = "data/cache"
     
-    DATA_START_DATE = "2023-01-01"
+    # 기본 데이터 기간 (Rolling Window 훈련 전체 범위)
+    DATA_START_DATE = "2021-01-01"  # 2023 → 2021 (Rolling Window 시작)
     DATA_END_DATE = "2023-12-31"
     LOOKBACK_DAYS = 60
     

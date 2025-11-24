@@ -67,8 +67,8 @@ class FundamentalDataCollector:
         start = pd.to_datetime(start_date)
         end = pd.to_datetime(end_date)
         
-        # 월말 날짜 생성 (대략 월 1회)
-        dates = pd.date_range(start, end, freq='M')
+        # 월말 날짜 생성 (대략 월 1회) - 'ME' = Month End
+        dates = pd.date_range(start, end, freq='ME')
         if end not in dates:
             dates = dates.append(pd.DatetimeIndex([end]))
         
