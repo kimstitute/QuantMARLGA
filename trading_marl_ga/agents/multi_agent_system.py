@@ -294,7 +294,7 @@ class MultiAgentSystem:
         mutated.append("Hedging")
         
         if verbose:
-            print(f"      변이: {', '.join(mutated)} (확률={mutation_prob*100:.0f}%, 비율={mutation_scale_ratio*100:.1f}%)")
+            print(f"      변이: {', '.join(mutated)} (파라미터 {mutation_prob*100:.0f}%, 노이즈 {mutation_scale_ratio*100:.1f}%)")
         
         return mutated
     

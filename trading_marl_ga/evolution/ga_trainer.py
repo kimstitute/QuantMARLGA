@@ -28,17 +28,19 @@ class GATrainer:
     """
     
     def __init__(self, population_size=None, n_generations=None, 
-                 mutation_prob=None, mutation_scale_ratio=None):
+                 child_mutation_prob=None, param_mutation_prob=None, mutation_scale_ratio=None):
         """
         Args:
             population_size (int): Population 크기 (기본: config.POPULATION_SIZE)
             n_generations (int): 총 세대 수 (기본: config.N_GENERATIONS)
-            mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
+            child_mutation_prob (float): 자식이 mutation 받을 확률 (0.0~1.0)
+            param_mutation_prob (float): 각 파라미터가 변이할 확률 (0.0~1.0)
             mutation_scale_ratio (float): 가중치 크기 대비 노이즈 비율
         """
         self.population_size = population_size or config.POPULATION_SIZE
         self.n_generations = n_generations or config.N_GENERATIONS
-        self.mutation_prob = mutation_prob or config.MUTATION_PROB
+        self.child_mutation_prob = child_mutation_prob or config.CHILD_MUTATION_PROB
+        self.param_mutation_prob = param_mutation_prob or config.PARAM_MUTATION_PROB
         self.mutation_scale_ratio = mutation_scale_ratio or config.MUTATION_SCALE_RATIO
         
         # Population 초기화
@@ -48,7 +50,8 @@ class GATrainer:
         print(f"Population 크기: {self.population_size}")
         print(f"세대 수: {self.n_generations}")
         print(f"학습 윈도우: {config.ROLLING_TRAIN_MONTHS}개월 (분기별)")
-        print(f"돌연변이 확률: {self.mutation_prob}")
+        print(f"자식 변이 확률: {self.child_mutation_prob*100:.0f}%")
+        print(f"파라미터 변이 확률: {self.param_mutation_prob*100:.0f}%")
         print(f"상대적 노이즈 비율: {self.mutation_scale_ratio*100:.1f}%")
         
         # EA Population (n개)
@@ -300,14 +303,14 @@ class GATrainer:
             # Crossover
             child = self.agent_level_crossover(parent1, parent2, p1_idx, p2_idx, verbose=verbose)
             
-            # Mutation
-            if np.random.rand() < self.mutation_prob:
-                child.mutate(mutation_prob=self.mutation_prob, 
+            # Mutation (RACE-style: 90% children, 10% parameters)
+            if np.random.rand() < self.child_mutation_prob:
+                child.mutate(mutation_prob=self.param_mutation_prob, 
                            mutation_scale_ratio=self.mutation_scale_ratio, 
                            verbose=verbose)
             else:
                 if verbose:
-                    print(f"      변이: 없음 (확률 {self.mutation_prob*100:.0f}%에서 탈락)")
+                    print(f"      변이: 없음 (확률 {self.child_mutation_prob*100:.0f}%에서 탈락)")
             
             new_population.append(child)
         

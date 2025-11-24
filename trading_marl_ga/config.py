@@ -135,7 +135,10 @@ class Config:
     N_GENERATIONS = 12  # 12 quarters (2021-2023)
     
     ELITE_FRACTION = 0.3  # Top 30% preserved
-    MUTATION_PROB = 0.9  # Per-parameter mutation probability
+    
+    # Mutation (RACE-style sparse mutation)
+    CHILD_MUTATION_PROB = 0.9   # 90% of children undergo mutation
+    PARAM_MUTATION_PROB = 0.1   # 10% of parameters mutate (sparse!)
     MUTATION_SCALE_RATIO = 0.05  # 5% relative noise
     
     # RL fine-tuning

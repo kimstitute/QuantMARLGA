@@ -40,7 +40,8 @@ print(f"{'='*80}")
 trainer = GATrainer(
     population_size=POPULATION_SIZE,
     n_generations=N_GENERATIONS,
-    mutation_prob=config.MUTATION_PROB,
+    child_mutation_prob=config.CHILD_MUTATION_PROB,
+    param_mutation_prob=config.PARAM_MUTATION_PROB,
     mutation_scale_ratio=config.MUTATION_SCALE_RATIO
 )
 
