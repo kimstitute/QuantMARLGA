@@ -34,7 +34,7 @@ print(f"  Population 크기:           {config.POPULATION_SIZE}")
 print(f"  총 팀 수:                  {config.POPULATION_SIZE + 1} (EA + MARL)")
 print(f"  세대 수:                   {config.N_GENERATIONS}")
 print(f"  돌연변이 확률:             {config.MUTATION_PROB}")
-print(f"  돌연변이 강도:             {config.MUTATION_ALPHA}")
+print(f"  상대적 노이즈 비율:        {config.MUTATION_SCALE_RATIO*100:.1f}% (가중치 대비)")
 
 print(f"\n[백테스트 설정]")
 print(f"  데이터 소스:               {config.DATA_SOURCE}")
