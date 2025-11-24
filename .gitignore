@@ -13,8 +13,7 @@ CODE_REVIEW_RESPONSE.md
 LOG_ANALYSIS_VERIFICATION.md
 
 # Colab related files
-COLAB_GUIDE.md
-colab_*.py
+# (colab_train_test.py and COLAB_QUICKSTART.md are tracked)
 
 # Reference materials
 src/
