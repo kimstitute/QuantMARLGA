@@ -32,10 +32,10 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     
     Returns:
         dict: 모든 에이전트의 관측 (N_STOCKS=30 기준):
-            - 'value_obs': (63,) = N*2+3
-            - 'quality_obs': (63,) = N*2+3
-            - 'portfolio_obs': (156,) = N*2 + (N*3+2) + 4
-            - 'hedging_obs': (122,) = N + (N*3+2)
+            - 'value_obs': (63,) = N*2+3 = 30*2+3
+            - 'quality_obs': (63,) = N*2+3 = 30*2+3
+            - 'portfolio_obs': (156,) = N*2+(N*3+2)+4 = 30*2+92+4
+            - 'hedging_obs': (122,) = N+(N*3+2) = 30+92
     """
     n_stocks = config.N_STOCKS
     
@@ -47,12 +47,12 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     # ===========================================================
     # 밸류에이션 전문: PER, PBR
     
-    # PER 비율 (10 종목)
+    # PER 비율 (n_stocks개)
     per_ratios = market_data.get('per', np.random.rand(n_stocks) * 20 + 5)
     # [0, 1]로 정규화: PER이 낮을수록 좋음
     per_normalized = 1.0 / (1.0 + per_ratios / 20.0)
     
-    # PBR 비율 (10 종목)
+    # PBR 비율 (n_stocks개)
     pbr_ratios = market_data.get('pbr', np.random.rand(n_stocks) * 3 + 0.5)
     # [0, 1]로 정규화: PBR이 낮을수록 좋음
     pbr_normalized = 1.0 / (1.0 + pbr_ratios / 2.0)
@@ -70,22 +70,22 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     ])
     
     value_obs = np.concatenate([
-        per_normalized,       # 10
-        pbr_normalized,       # 10
+        per_normalized,       # n_stocks
+        pbr_normalized,       # n_stocks
         market_indicators     # 3
-    ])  # Total: 23
+    ])  # Total: n_stocks*2+3
     
     # ===========================================================
     # 2. Quality 관측 (23 차원) - 독립적 (Value와 병렬)
     # ===========================================================
     # 품질 전문: ROE, 부채비율
     
-    # ROE (자기자본이익률, 10 종목)
+    # ROE (자기자본이익률, n_stocks개)
     roe = market_data.get('roe', np.random.rand(n_stocks) * 0.3)
     # [0, 1]로 정규화: ROE가 높을수록 좋음
     roe_normalized = roe / 0.3
     
-    # 부채비율 (10 종목)
+    # 부채비율 (n_stocks개)
     debt_ratio = market_data.get('debt_ratio', np.random.rand(n_stocks) * 1.5)
     # [0, 1]로 정규화: 부채비율이 낮을수록 좋음
     debt_normalized = 1.0 / (1.0 + debt_ratio)
@@ -94,33 +94,33 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     # (Value와 같은 시장 환경 인식)
     
     quality_obs = np.concatenate([
-        roe_normalized,       # 10
-        debt_normalized,      # 10
+        roe_normalized,       # n_stocks
+        debt_normalized,      # n_stocks
         market_indicators     # 3
-    ])  # Total: 23
+    ])  # Total: n_stocks*2+3
     
     # ===========================================================
     # 3. Portfolio 관측 (56 차원) - 융합
     # ===========================================================
     # Value & Quality 출력을 입력으로 받음
     
-    # Value & Quality Agent 출력 (각 10개)
+    # Value & Quality Agent 출력 (각 n_stocks개)
     if value_scores is None:
         value_scores = np.random.rand(n_stocks)  # placeholder
     if quality_scores is None:
         quality_scores = np.random.rand(n_stocks)  # placeholder
     
-    # 리스크 지표 (32개)
-    volatility = market_data.get('volatility', np.random.rand(n_stocks) * 0.3)  # 10
-    beta = market_data.get('beta', np.random.rand(n_stocks) * 2)  # 10
-    sharpe = market_data.get('sharpe', np.random.randn(n_stocks))  # 10
+    # 리스크 지표 (n_stocks*3+2개)
+    volatility = market_data.get('volatility', np.random.rand(n_stocks) * 0.3)
+    beta = market_data.get('beta', np.random.rand(n_stocks) * 2)
+    sharpe = market_data.get('sharpe', np.random.randn(n_stocks))
     
     risk_metrics = np.concatenate([
-        volatility,           # 10
-        beta,                 # 10
-        sharpe,               # 10
-        np.random.rand(2)     # 추가 2개
-    ])  # Total: 32
+        volatility,           # n_stocks
+        beta,                 # n_stocks
+        sharpe,               # n_stocks
+        np.random.rand(2)     # 2
+    ])  # Total: n_stocks*3+2
     
     # 시장 상태 (4개)
     market_vol = market_data.get('market_volatility', np.random.rand() * 0.3)
@@ -137,38 +137,38 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     ])  # Total: 4
     
     portfolio_obs = np.concatenate([
-        value_scores,         # 10 (Value Agent 출력)
-        quality_scores,       # 10 (Quality Agent 출력)
-        risk_metrics,         # 32
+        value_scores,         # n_stocks
+        quality_scores,       # n_stocks
+        risk_metrics,         # n_stocks*3+2
         market_state          # 4
-    ])  # Total: 56
+    ])  # Total: n_stocks*2+(n_stocks*3+2)+4
     
     # ===========================================================
     # 4. Hedging 관측 (42 차원) - 방어
     # ===========================================================
     # Portfolio Agent 출력 + 시장 리스크
     
-    # Portfolio weights (10개)
+    # Portfolio weights (n_stocks개)
     if portfolio_weights is None:
         portfolio_weights = np.random.rand(n_stocks)  # placeholder
         portfolio_weights = portfolio_weights / portfolio_weights.sum()
     
-    # 시장 리스크 지표 (32개)
-    correlation_with_market = market_data.get('correlation', np.random.rand(n_stocks))  # 10
-    max_drawdown = market_data.get('max_drawdown', np.random.rand(n_stocks) * 0.5)  # 10
-    var_95 = market_data.get('var_95', np.random.rand(n_stocks) * 0.1)  # 10 (VaR)
+    # 시장 리스크 지표 (n_stocks*3+2개)
+    correlation_with_market = market_data.get('correlation', np.random.rand(n_stocks))
+    max_drawdown = market_data.get('max_drawdown', np.random.rand(n_stocks) * 0.5)
+    var_95 = market_data.get('var_95', np.random.rand(n_stocks) * 0.1)
     
     market_risk = np.concatenate([
-        correlation_with_market,  # 10
-        max_drawdown,             # 10
-        var_95,                   # 10
-        np.random.rand(2)         # 추가 2개
-    ])  # Total: 32
+        correlation_with_market,  # n_stocks
+        max_drawdown,             # n_stocks
+        var_95,                   # n_stocks
+        np.random.rand(2)         # 2
+    ])  # Total: n_stocks*3+2
     
     hedging_obs = np.concatenate([
-        portfolio_weights,    # 10 (Portfolio Agent 출력)
-        market_risk           # 32
-    ])  # Total: 42
+        portfolio_weights,    # n_stocks
+        market_risk           # n_stocks*3+2
+    ])  # Total: n_stocks+(n_stocks*3+2)
     
     return {
         'value_obs': value_obs.astype(np.float32),

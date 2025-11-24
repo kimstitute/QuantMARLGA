@@ -88,8 +88,8 @@ class Config:
     # Parallel + fusion architecture (scales with N_STOCKS)
     VALUE_OBS_DIM = N_STOCKS * 2 + 3  # 63 for N_STOCKS=30
     QUALITY_OBS_DIM = N_STOCKS * 2 + 3  # 63 (independent)
-    PORTFOLIO_OBS_DIM = N_STOCKS * 2 + (N_STOCKS * 3 + 2) + 4  # 156 (fusion)
-    HEDGING_OBS_DIM = N_STOCKS + (N_STOCKS * 3 + 2)  # 122 (defense)
+    PORTFOLIO_OBS_DIM = N_STOCKS * 2 + (N_STOCKS * 3 + 2) + 4  # 156: value(30) + quality(30) + risk(92) + market(4)
+    HEDGING_OBS_DIM = N_STOCKS + (N_STOCKS * 3 + 2)  # 122: portfolio(30) + market_risk(92)
     
     ACTION_DIM = N_STOCKS
     
