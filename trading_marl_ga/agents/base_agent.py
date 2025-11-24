@@ -38,9 +38,10 @@ class BaseAgent:
         # ============================================
         # Networks
         # ============================================
-        self.actor = ActorNetwork(obs_dim, action_dim, config.HIDDEN_DIM)
-        self.critic = CriticNetwork(obs_dim, config.HIDDEN_DIM)
-        self.critic_target = copy.deepcopy(self.critic)
+        self.device = config.DEVICE
+        self.actor = ActorNetwork(obs_dim, action_dim, config.HIDDEN_DIM).to(self.device)
+        self.critic = CriticNetwork(obs_dim, config.HIDDEN_DIM).to(self.device)
+        self.critic_target = copy.deepcopy(self.critic).to(self.device)
         
         # Freeze target network
         for param in self.critic_target.parameters():
@@ -79,7 +80,7 @@ class BaseAgent:
             np.ndarray: 행동 (action_dim,)
         """
         with torch.no_grad():
-            obs_tensor = torch.FloatTensor(obs).unsqueeze(0)  # (1, obs_dim)
+            obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)  # (1, obs_dim) -> GPU
             action = self.actor(obs_tensor)  # (1, action_dim)
             
             if not deterministic:
@@ -88,7 +89,7 @@ class BaseAgent:
                 action = action + noise
                 action = torch.clamp(action, 0, 1)
             
-            return action.squeeze(0).numpy()
+            return action.squeeze(0).cpu().numpy()
     
     def update(self, batch, agent_prefix):
         """
@@ -101,12 +102,12 @@ class BaseAgent:
         Returns:
             dict: 손실 값들
         """
-        # 배치에서 데이터 추출
-        obs = batch[f'{agent_prefix}_obs']
-        actions = batch[f'{agent_prefix}_action']
-        rewards = batch[f'{agent_prefix}_reward']
-        next_obs = batch[f'{agent_prefix}_next_obs']
-        dones = batch['done']
+        # 배치에서 데이터 추출 및 GPU 전송
+        obs = batch[f'{agent_prefix}_obs'].to(self.device)
+        actions = batch[f'{agent_prefix}_action'].to(self.device)
+        rewards = batch[f'{agent_prefix}_reward'].to(self.device)
+        next_obs = batch[f'{agent_prefix}_next_obs'].to(self.device)
+        dones = batch['done'].to(self.device)
         
         # Shape 확인 및 수정 (broadcasting 문제 방지)
         if rewards.dim() == 1:

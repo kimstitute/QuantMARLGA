@@ -50,8 +50,10 @@ print(f"  Tau:                       {config.TAU}")
 
 print(f"\n[환경 최적화]")
 print(f"  실행 환경:                 {'Colab' if config.ENV['is_colab'] else 'Local'}")
+print(f"  Device:                    {config.DEVICE}")
 print(f"  GPU:                       {'Yes' if config.ENV['has_gpu'] else 'CPU Only'}")
 if config.ENV['has_gpu']:
+    print(f"  GPU 이름:                  {config.ENV['gpu_name']}")
     print(f"  GPU 메모리:                {config.ENV['gpu_memory_gb']:.1f} GB")
 print(f"  혼합 정밀도 (FP16):        {'활성화' if config.USE_AMP else '비활성화'}")
 print(f"  병렬 백테스트:             {'활성화' if config.USE_PARALLEL_BACKTEST else '비활성화'}")

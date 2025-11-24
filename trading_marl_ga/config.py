@@ -48,6 +48,9 @@ def detect_environment():
 # 환경 감지
 ENV = detect_environment()
 
+# Device 설정
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 class Config:
     """전역 설정 클래스"""
@@ -56,6 +59,7 @@ class Config:
     # 환경 정보
     # ========================================
     ENV = ENV  # 모듈 레벨 ENV를 클래스 속성으로 노출
+    DEVICE = DEVICE  # GPU/CPU 디바이스
     
     # ========================================
     # Environment Settings
