@@ -417,7 +417,7 @@ class GATrainer:
             ea_returns.append(return_rate)
             
             if verbose:
-                print(f"    EA #{i+1:2d}: 자산={final_portfolio_value:>12,.0f}원 | 수익률={return_rate:>6.2f}% | Fitness={system.fitness:>7.4f}")
+                print(f"    EA #{i+1:2d}: 종료자산={final_portfolio_value:>12,.0f}원 | 기간수익률={return_rate:>6.2f}% | Fitness={system.fitness:>7.4f}")
         
         # 2. MARL 팀도 rollout + fitness 측정 (1개) ⭐ 핵심!
         marl_portfolio_value = None
@@ -471,16 +471,16 @@ class GATrainer:
             marl_portfolio_value = final_portfolio_value
             
             if verbose:
-                print(f"    MARL   : 자산={final_portfolio_value:>12,.0f}원 | 수익률={marl_return:>6.2f}% | Fitness={self.marl_team.fitness:>7.4f}")
+                print(f"    MARL   : 종료자산={final_portfolio_value:>12,.0f}원 | 기간수익률={marl_return:>6.2f}% | Fitness={self.marl_team.fitness:>7.4f}")
         
         # 3. 전체 요약 출력
         if verbose and len(ea_portfolio_values) > 0:
-            print(f"\n    [요약] EA 팀 ({len(ea_portfolio_values)}개)")
-            print(f"      자산 - 최고: {max(ea_portfolio_values):>12,.0f}원 | 평균: {np.mean(ea_portfolio_values):>12,.0f}원 | 최저: {min(ea_portfolio_values):>12,.0f}원")
-            print(f"      수익률 - 최고: {max(ea_returns):>6.2f}% | 평균: {np.mean(ea_returns):>6.2f}% | 최저: {min(ea_returns):>6.2f}%")
+            print(f"\n    [요약] EA 팀 ({len(ea_portfolio_values)}개) - 초기자본 {config.INITIAL_CAPITAL:,.0f}원 기준")
+            print(f"      종료자산 - 최고: {max(ea_portfolio_values):>12,.0f}원 | 평균: {np.mean(ea_portfolio_values):>12,.0f}원 | 최저: {min(ea_portfolio_values):>12,.0f}원")
+            print(f"      기간수익률 - 최고: {max(ea_returns):>6.2f}% | 평균: {np.mean(ea_returns):>6.2f}% | 최저: {min(ea_returns):>6.2f}%")
             if marl_portfolio_value is not None:
-                print(f"    [요약] MARL 팀")
-                print(f"      자산: {marl_portfolio_value:>12,.0f}원 | 수익률: {marl_return:>6.2f}%")
+                print(f"    [요약] MARL 팀 - 초기자본 {config.INITIAL_CAPITAL:,.0f}원 기준")
+                print(f"      종료자산: {marl_portfolio_value:>12,.0f}원 | 기간수익률: {marl_return:>6.2f}%")
         
         collected = len(self.shared_replay_buffer) - initial_buffer_size
         return collected
@@ -622,25 +622,19 @@ class GATrainer:
             marl_fitness = self.marl_team.fitness if self.marl_team.fitness else -np.inf
             
             print(f"  MARL 팀 Fitness: {marl_fitness:.4f} (RL 학습 후)")
-            print(f"  Worst 팀 (#{worst_idx}): {fitnesses[worst_idx]:.4f}")
+            print(f"  Worst 팀 (EA #{worst_idx+1}): {fitnesses[worst_idx]:.4f}")
             
-            # Worst와 교체 (MARL 복사본을 Population에 주입)
-            self.population[worst_idx] = self.marl_team.clone()
-            self.population[worst_idx].fitness = marl_fitness
+            # Conditional Injection: MARL이 worst보다 좋을 때만
+            if marl_fitness > fitnesses[worst_idx]:
+                self.population[worst_idx] = self.marl_team.clone()
+                self.population[worst_idx].fitness = marl_fitness
+                print(f"  [OK] Injection 완료 (MARL 복사본 → Population[{worst_idx}])")
+            else:
+                print(f"  [SKIP] MARL이 Worst보다 나쁨, injection 생략")
             
-            # 중요: MARL 원본(self.marl_team)은 절대 대체하지 않음!
-            # 다음 세대에서도 계속 RL 학습을 이어감
-            # Population의 best로 대체하는 것은 잘못된 구현!
-            
-            print(f"  [OK] Injection 완료 (MARL 복사본 → Population[{worst_idx}])")
             print(f"  [INFO] MARL 원본은 보존, 다음 세대 계속 RL 학습")
             
-            # 4. 진화 (GA) - Injection 이후에 수행
-            print(f"\n[4/4] 진화 (Selection, Crossover, Mutation)")
-            # verbose=True로 설정하면 모든 교차/변이 과정 상세 로그 출력
-            stats = self.evolve_generation(verbose=True)
-            
-            # 세대 통계 (Phase 1과 Phase 2 공통)
+            # 세대 통계 (진화 전에 계산!)
             fitnesses = [s.fitness if s.fitness is not None else -np.inf for s in self.population]
             valid_fitnesses = [f for f in fitnesses if f != -np.inf]
             
@@ -665,7 +659,7 @@ class GATrainer:
                     'std_fitness': 0.0
                 }
             
-            # 진행 상황 출력
+            # 세대 통계 출력
             print(f"\n{'='*60}")
             print(f"세대 {gen} 완료")
             print(f"{'='*60}")
@@ -678,6 +672,10 @@ class GATrainer:
             
             # 기록
             self.fitness_history.append(stats)
+            
+            # 4. 진화 (다음 세대 준비)
+            print(f"\n[4/4] 진화: 다음 세대 준비 (Selection, Crossover, Mutation)")
+            self.evolve_generation(verbose=True)
         
         print(f"\n{'='*60}")
         print(f"학습 완료!")
