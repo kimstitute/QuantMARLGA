@@ -238,6 +238,7 @@ class BaseAgent:
             - Actor: 더 적극적으로 변이 (전체 mutation_prob, ratio)
             - Critic: 더 보수적으로 변이 (mutation_prob * 0.5, ratio * 0.5)
             - 상대적 크기 기반으로 모든 레이어에 균형잡힌 변이
+            - 변이 후 critic_target 동기화
         """
         with torch.no_grad():
             # Actor 변이 (정책 탐색)
@@ -256,6 +257,9 @@ class BaseAgent:
                     noise_std = param_scale * (mutation_scale_ratio * 0.5)
                     noise = torch.randn_like(param) * noise_std
                     param.add_(noise)
+            
+            # Critic 변이 후 target 동기화
+            self.critic_target.load_state_dict(self.critic.state_dict())
     
     def clone(self):
         """
