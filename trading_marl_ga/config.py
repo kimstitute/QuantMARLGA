@@ -92,13 +92,12 @@ class Config:
     
     # Batch Size (고정: 256)
     # Off-policy RL 표준 배치 크기
-    # 너무 크면 초기 학습이 불가능 (버퍼 차기 전까지 학습 불가)
     BATCH_SIZE = 256
     
     # RL 학습 시작 최소 버퍼 크기
-    # BATCH_SIZE보다 작게 설정하여 조기 학습 가능
-    # 최소 100개 transition 확보 후 학습 시작
-    MIN_BUFFER_FOR_RL = 100
+    # BATCH_SIZE 이상이어야 샘플링 가능 (replay_buffer.sample()의 요구사항)
+    # 1세대 = 11팀 × 200일+ = 2200+ transitions이므로 충분
+    MIN_BUFFER_FOR_RL = BATCH_SIZE  # 256
     
     # Learning Rates
     LEARNING_RATE_ACTOR = 3e-4
