@@ -12,7 +12,7 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     """
     시장 데이터로부터 4개 에이전트의 관측 생성
     
-    ✅ 병렬 + 융합 구조:
+    병렬 + 융합 구조:
     - Value obs: 독립적 (PER, PBR, market)
     - Quality obs: 독립적 (ROE, Debt, market) - Value와 병렬
     - Portfolio obs: 융합 (value_scores + quality_scores + risk + market)
@@ -43,7 +43,7 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     prices = market_data.get('prices', np.random.rand(n_stocks) * 100 + 10)
     
     # ===========================================================
-    # 1. Value 관측 (23 차원) - 독립적 ✅
+    # 1. Value 관측 (23 차원) - 독립적
     # ===========================================================
     # 밸류에이션 전문: PER, PBR
     
@@ -76,7 +76,7 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     ])  # Total: 23
     
     # ===========================================================
-    # 2. Quality 관측 (23 차원) - 독립적 (Value와 병렬) ✅
+    # 2. Quality 관측 (23 차원) - 독립적 (Value와 병렬)
     # ===========================================================
     # 품질 전문: ROE, 부채비율
     
@@ -100,9 +100,9 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     ])  # Total: 23
     
     # ===========================================================
-    # 3. Portfolio 관측 (56 차원) - 융합 ✅
+    # 3. Portfolio 관측 (56 차원) - 융합
     # ===========================================================
-    # Value & Quality 출력을 입력으로 받음!
+    # Value & Quality 출력을 입력으로 받음
     
     # Value & Quality Agent 출력 (각 10개)
     if value_scores is None:
@@ -144,7 +144,7 @@ def construct_observations(market_data, value_scores=None, quality_scores=None, 
     ])  # Total: 56
     
     # ===========================================================
-    # 4. Hedging 관측 (42 차원) - 방어 ✅
+    # 4. Hedging 관측 (42 차원) - 방어
     # ===========================================================
     # Portfolio Agent 출력 + 시장 리스크
     

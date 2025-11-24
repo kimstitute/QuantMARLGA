@@ -47,7 +47,7 @@ class MultiAgentSystem:
         """
         최종 포트폴리오 비중 생성을 위한 4-에이전트 파이프라인 실행
         
-        ✅ 병렬 + 융합 구조:
+        병렬 + 융합 구조:
         1. Value & Quality: 병렬 실행 (독립적)
         2. Portfolio: Value & Quality 출력을 융합
         3. Hedging: Portfolio 출력으로 방어
@@ -70,7 +70,7 @@ class MultiAgentSystem:
                 - 'final_weights': (n_stocks,) 헷징 후 최종 포지션
         """
         # ===========================================================
-        # Phase 1: Value & Quality 병렬 실행 (독립적) ✅
+        # Phase 1: Value & Quality 병렬 실행 (독립적)
         # ===========================================================
         
         # 1-1. Value Agent: 저평가된 주식 식별 (독립적)
@@ -80,7 +80,7 @@ class MultiAgentSystem:
         quality_scores = self.quality_agent.act(market_state['quality_obs'])
         
         # ===========================================================
-        # Phase 2: Portfolio 융합 (Value + Quality 출력 사용) ✅
+        # Phase 2: Portfolio 융합 (Value + Quality 출력 사용)
         # ===========================================================
         
         # Portfolio obs 동적 재구성
@@ -109,7 +109,7 @@ class MultiAgentSystem:
         portfolio_weights = portfolio_weights / (portfolio_weights.sum() + 1e-8)
         
         # ===========================================================
-        # Phase 3: Hedging 방어 (Portfolio 출력 사용) ✅
+        # Phase 3: Hedging 방어 (Portfolio 출력 사용)
         # ===========================================================
         
         # Hedging obs 동적 재구성
