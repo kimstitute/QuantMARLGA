@@ -235,11 +235,11 @@ class BacktestEnv:
         현재 시점의 관측 생성
         
         Returns:
-            dict: 4개 에이전트의 관측
-                - 'value_obs': (23,)
-                - 'quality_obs': (23,)
-                - 'portfolio_obs': (56,)
-                - 'hedging_obs': (42,)
+            dict: 4개 에이전트의 관측 (N_STOCKS=30 기준)
+                - 'value_obs': (63,)
+                - 'quality_obs': (63,)
+                - 'portfolio_obs': (156,)
+                - 'hedging_obs': (122,)
         """
         if config.DATA_SOURCE == "real":
             # 실제 시장 데이터

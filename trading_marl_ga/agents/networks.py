@@ -71,25 +71,6 @@ class ActorNetwork(nn.Module):
         x = self.relu(self.fc2(x))
         x = self.sigmoid(self.fc3(x))
         return x
-    
-    @property
-    def net(self):
-        """하위 호환성을 위한 속성 (사용하지 말 것)"""
-        return nn.Sequential(
-            self.fc1, self.relu,
-            self.fc2, self.relu,
-            self.fc3, self.sigmoid
-        )
-    
-    def forward(self, obs):
-        """
-        Args:
-            obs (torch.Tensor): 관측 (batch_size, obs_dim)
-            
-        Returns:
-            torch.Tensor: 행동 (batch_size, action_dim), [0, 1] 범위
-        """
-        return self.net(obs)
 
 
 class CriticNetwork(nn.Module):
@@ -147,13 +128,4 @@ class CriticNetwork(nn.Module):
         x = self.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-    
-    @property
-    def net(self):
-        """하위 호환성을 위한 속성 (사용하지 말 것)"""
-        return nn.Sequential(
-            self.fc1, self.relu,
-            self.fc2, self.relu,
-            self.fc3
-        )
 

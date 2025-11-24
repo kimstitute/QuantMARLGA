@@ -160,7 +160,7 @@ class BaseAgent:
         # ============================================
         with torch.no_grad():
             # Advantage 계산
-            advantages = td_target - current_values
+            advantages = td_target - current_values.detach()
             # 정규화 (학습 안정화)
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         

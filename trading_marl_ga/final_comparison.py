@@ -68,9 +68,14 @@ print(f"\n{'='*80}")
 print(f"[2/3] 테스트 기간 성과 평가 ({TEST_START} ~ {TEST_END})")
 print(f"{'='*80}")
 
-# 2.1 GA-MARL 최고 시스템 테스트
-print(f"\n[GA-MARL 최고 시스템 테스트]")
+# 2.1 테스트 환경 생성 (모든 전략이 같은 환경 사용)
+print(f"\n[테스트 환경 생성]")
 test_env = BacktestEnv(start_date=TEST_START, end_date=TEST_END)
+print(f"  기간: {TEST_START} ~ {TEST_END}")
+print(f"  데이터 로드 완료")
+
+# 2.2 GA-MARL 최고 시스템 테스트
+print(f"\n[GA-MARL 최고 시스템 테스트]")
 obs = test_env.reset()
 done = False
 
@@ -82,7 +87,7 @@ while not done:
 
 ga_marl_metrics = test_env.get_performance_metrics()
 
-# 2.2 벤치마크 평가 (같은 테스트 기간)
+# 2.3 벤치마크 평가 (같은 환경 재사용)
 print(f"\n[벤치마크 평가 (테스트 기간)]")
 
 results = {"GA-MARL (Best)": ga_marl_metrics}
@@ -94,7 +99,6 @@ benchmarks = [
 ]
 
 for name, strategy in benchmarks:
-    test_env = BacktestEnv(start_date=TEST_START, end_date=TEST_END)
     metrics = run_benchmark(strategy, test_env, verbose=False)
     results[name] = metrics
     print(f"  {name}: 샤프 {metrics['sharpe_ratio']:.3f}, 수익률 {metrics['total_return']*100:.2f}%")
