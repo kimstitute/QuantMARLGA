@@ -63,15 +63,18 @@ class BaseAgent:
             for param in self.critic_head_target.parameters():
                 param.requires_grad = False
             
-            # Optimizer (인코더는 공유, 헤드만 독립 학습)
+            # Optimizer (헤드만 독립 학습, 인코더는 글로벌 optimizer 사용)
             self.actor_optimizer = Adam(
-                list(self.encoder.parameters()) + list(self.actor_head.parameters()),
+                self.actor_head.parameters(),  # 헤드만!
                 lr=config.LEARNING_RATE_ACTOR
             )
             self.critic_optimizer = Adam(
-                list(self.encoder.parameters()) + list(self.critic_head.parameters()),
+                self.critic_head.parameters(),  # 헤드만!
                 lr=config.LEARNING_RATE_CRITIC
             )
+            
+            # 글로벌 인코더 optimizer 참조
+            self.encoder_optimizer = global_encoders.get_optimizer(name)
             
             # 하위 호환성을 위한 래핑
             self.actor = None  # 직접 사용 안 함
@@ -184,27 +187,38 @@ class BaseAgent:
                     current_values = self.critic_head(features)
                     critic_loss = F.mse_loss(current_values, td_target)
                 
+                # 헤드 + 인코더 gradient 계산
+                self.encoder_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
                 self.scaler.scale(critic_loss).backward()
+                
+                # Gradient clipping (분리)
+                self.scaler.unscale_(self.encoder_optimizer)
                 self.scaler.unscale_(self.critic_optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    list(self.encoder.parameters()) + list(self.critic_head.parameters()),
-                    config.GRAD_CLIP
-                )
-                self.scaler.step(self.critic_optimizer)
+                torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), config.GRAD_CLIP)
+                torch.nn.utils.clip_grad_norm_(self.critic_head.parameters(), config.GRAD_CLIP)
+                
+                # 업데이트 (분리)
+                self.scaler.step(self.encoder_optimizer)  # 글로벌 인코더
+                self.scaler.step(self.critic_optimizer)   # 로컬 헤드
                 self.scaler.update()
             else:
                 features = self.encoder(obs)
                 current_values = self.critic_head(features)
                 critic_loss = F.mse_loss(current_values, td_target)
                 
+                # 헤드 + 인코더 gradient 계산
+                self.encoder_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    list(self.encoder.parameters()) + list(self.critic_head.parameters()),
-                    config.GRAD_CLIP
-                )
-                self.critic_optimizer.step()
+                
+                # Gradient clipping (분리)
+                torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), config.GRAD_CLIP)
+                torch.nn.utils.clip_grad_norm_(self.critic_head.parameters(), config.GRAD_CLIP)
+                
+                # 업데이트 (분리)
+                self.encoder_optimizer.step()  # 글로벌 인코더
+                self.critic_optimizer.step()   # 로컬 헤드
         else:
             # 독립 네트워크 모드
             with torch.no_grad():
@@ -255,14 +269,20 @@ class BaseAgent:
                     action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
                     actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
                 
+                # 헤드 + 인코더 gradient 계산
+                self.encoder_optimizer.zero_grad()
                 self.actor_optimizer.zero_grad()
                 self.scaler.scale(actor_loss).backward()
+                
+                # Gradient clipping (분리)
+                self.scaler.unscale_(self.encoder_optimizer)
                 self.scaler.unscale_(self.actor_optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    list(self.encoder.parameters()) + list(self.actor_head.parameters()),
-                    config.GRAD_CLIP
-                )
-                self.scaler.step(self.actor_optimizer)
+                torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), config.GRAD_CLIP)
+                torch.nn.utils.clip_grad_norm_(self.actor_head.parameters(), config.GRAD_CLIP)
+                
+                # 업데이트 (분리)
+                self.scaler.step(self.encoder_optimizer)  # 글로벌 인코더
+                self.scaler.step(self.actor_optimizer)    # 로컬 헤드
                 self.scaler.update()
             else:
                 features = self.encoder(obs)
@@ -270,13 +290,18 @@ class BaseAgent:
                 action_loss = F.mse_loss(predicted_actions, actions, reduction='none')
                 actor_loss = (action_loss.mean(dim=1, keepdim=True) * advantages.abs()).mean()
                 
+                # 헤드 + 인코더 gradient 계산
+                self.encoder_optimizer.zero_grad()
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    list(self.encoder.parameters()) + list(self.actor_head.parameters()),
-                    config.GRAD_CLIP
-                )
-                self.actor_optimizer.step()
+                
+                # Gradient clipping (분리)
+                torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), config.GRAD_CLIP)
+                torch.nn.utils.clip_grad_norm_(self.actor_head.parameters(), config.GRAD_CLIP)
+                
+                # 업데이트 (분리)
+                self.encoder_optimizer.step()  # 글로벌 인코더
+                self.actor_optimizer.step()    # 로컬 헤드
         else:
             # 독립 네트워크 모드
             if self.use_amp:

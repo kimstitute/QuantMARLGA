@@ -100,7 +100,7 @@ class Config:
     
     # RACE-style Type-specific Shared Encoders
     USE_SHARED_ENCODER = True  # True: 타입별 공유 인코더 (RACE), False: 독립 네트워크
-    ENCODER_HIDDEN_DIM = 64  # 공유 인코더 출력 차원
+    ENCODER_HIDDEN_DIM = 128  # 공유 인코더 출력 차원 (64→128: 정보 손실 방지)
     
     # ========================================
     # Training Hyperparameters

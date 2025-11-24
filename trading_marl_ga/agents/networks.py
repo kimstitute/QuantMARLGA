@@ -157,9 +157,14 @@ class GlobalEncoders:
             self.quality_encoder = None
             self.portfolio_encoder = None
             self.hedging_encoder = None
+            # 글로벌 optimizers
+            self.value_optimizer = None
+            self.quality_optimizer = None
+            self.portfolio_optimizer = None
+            self.hedging_optimizer = None
             GlobalEncoders._initialized = True
     
-    def initialize(self, value_obs_dim, portfolio_obs_dim, hedging_obs_dim, hidden_dim=64, device='cpu'):
+    def initialize(self, value_obs_dim, portfolio_obs_dim, hedging_obs_dim, hidden_dim=64, device='cpu', lr=3e-4):
         """
         인코더 초기화
         
@@ -169,18 +174,28 @@ class GlobalEncoders:
             hedging_obs_dim (int): Hedging 관측 차원
             hidden_dim (int): Feature 차원
             device (str): 디바이스
+            lr (float): 인코더 learning rate
         """
+        from torch.optim import Adam
+        
         self.value_encoder = SharedEncoder(value_obs_dim, hidden_dim).to(device)
         self.quality_encoder = SharedEncoder(value_obs_dim, hidden_dim).to(device)
         self.portfolio_encoder = SharedEncoder(portfolio_obs_dim, hidden_dim).to(device)
         self.hedging_encoder = SharedEncoder(hedging_obs_dim, hidden_dim).to(device)
         self.device = device
         
+        # 각 인코더마다 독립 optimizer
+        self.value_optimizer = Adam(self.value_encoder.parameters(), lr=lr)
+        self.quality_optimizer = Adam(self.quality_encoder.parameters(), lr=lr)
+        self.portfolio_optimizer = Adam(self.portfolio_encoder.parameters(), lr=lr)
+        self.hedging_optimizer = Adam(self.hedging_encoder.parameters(), lr=lr)
+        
         print(f"[GlobalEncoders] 초기화 완료")
         print(f"  Value/Quality: {value_obs_dim} -> {hidden_dim}")
         print(f"  Portfolio: {portfolio_obs_dim} -> {hidden_dim}")
         print(f"  Hedging: {hedging_obs_dim} -> {hidden_dim}")
         print(f"  Device: {device}")
+        print(f"  Encoder LR: {lr}")
     
     def get_encoder(self, agent_type):
         """
@@ -200,12 +215,57 @@ class GlobalEncoders:
         }
         return encoders[agent_type]
     
+    def get_optimizer(self, agent_type):
+        """
+        에이전트 타입에 맞는 인코더 optimizer 반환
+        
+        Args:
+            agent_type (str): 'value', 'quality', 'portfolio', 'hedging'
+            
+        Returns:
+            torch.optim.Optimizer: 해당 타입의 인코더 optimizer
+        """
+        optimizers = {
+            'value': self.value_optimizer,
+            'quality': self.quality_optimizer,
+            'portfolio': self.portfolio_optimizer,
+            'hedging': self.hedging_optimizer
+        }
+        return optimizers[agent_type]
+    
+    def step_encoder(self, agent_type):
+        """
+        특정 타입의 인코더 optimizer step
+        
+        헤드 학습 후 gradient가 인코더에 누적되어 있음
+        이 메서드로 인코더 파라미터 업데이트
+        
+        Args:
+            agent_type (str): 'value', 'quality', 'portfolio', 'hedging'
+        """
+        optimizer = self.get_optimizer(agent_type)
+        optimizer.step()
+    
+    def zero_grad_encoder(self, agent_type):
+        """
+        특정 타입의 인코더 gradient 초기화
+        
+        Args:
+            agent_type (str): 'value', 'quality', 'portfolio', 'hedging'
+        """
+        optimizer = self.get_optimizer(agent_type)
+        optimizer.zero_grad()
+    
     def reset(self):
         """전역 인코더 리셋 (테스트용)"""
         self.value_encoder = None
         self.quality_encoder = None
         self.portfolio_encoder = None
         self.hedging_encoder = None
+        self.value_optimizer = None
+        self.quality_optimizer = None
+        self.portfolio_optimizer = None
+        self.hedging_optimizer = None
         GlobalEncoders._initialized = False
 
 
