@@ -295,6 +295,7 @@ class BacktestEnv:
         else:
             # 리밸런싱 주기가 아닌 경우: 포지션 유지, 가격 변동만 반영
             # 거래 비용 없음, 포지션 그대로
+            trade_costs = 0.0  # 리밸런싱 없으면 거래 비용 없음
             stock_value = (self.positions * current_prices).sum()
             self.portfolio_value = self.cash + stock_value
         
