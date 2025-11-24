@@ -126,8 +126,9 @@ class Config:
     POPULATION_SIZE = 10  # 20 → 10 (빠른 실험, 종목 수 증가로 보완)
     N_GENERATIONS = 100
     
-    # Elite 비율 (RACE 논문: 0.2 = 20%)
-    ELITE_FRACTION = 0.2  # 상위 20% 보존, 80% 교체 (RACE와 동일)
+    # Elite 비율 (RACE 논문: 0.2 = 20%, 우리: 0.3 = 30%)
+    # 주식 투자는 노이즈가 많으므로 더 보수적으로 설정
+    ELITE_FRACTION = 0.3  # 상위 30% 보존, 70% 교체 (안정적)
     
     # Mutation 설정 (가우시안 노이즈 기반)
     MUTATION_PROB = 0.9        # 각 파라미터가 변이할 확률 (0.0~1.0)
