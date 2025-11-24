@@ -125,7 +125,7 @@ class BaseAgent:
         
         # Mixed Precision Training
         if self.use_amp:
-            with autocast(device_type='cuda'):
+            with autocast():
                 # Current Q-value
                 current_values = self.critic(obs)
                 # Critic loss (MSE)
@@ -166,7 +166,7 @@ class BaseAgent:
         
         # Mixed Precision Training
         if self.use_amp:
-            with autocast(device_type='cuda'):
+            with autocast():
                 # Actor 출력
                 predicted_actions = self.actor(obs)
                 # Actor loss (Advantage-weighted MSE)
