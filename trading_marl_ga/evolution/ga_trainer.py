@@ -554,8 +554,8 @@ class GATrainer:
             
             print(f"전체 학습 기간: {first_start} ~ {last_end}")
             
-            # 전체 기간 환경 생성 (한 번만)
-            self.env = BacktestEnv()
+            # 전체 기간 환경 생성 (한 번만, 전체 기간 데이터 로드)
+            self.env = BacktestEnv(start_date=first_start, end_date=last_end)
             print(f"[OK] 전체 데이터 로드 완료\n")
         
         for gen in range(1, self.n_generations + 1):
