@@ -73,7 +73,7 @@ def select_universe(
     print("-" * 80)
     for i, ticker in enumerate(selected_tickers, 1):
         # 종목 데이터 확인
-        ticker_data = data_manager.prices[ticker]
+        ticker_data = data_manager.price_data[ticker]  # price_data 사용
         data_days = len(ticker_data)
         start_date = ticker_data.index[0].strftime("%Y-%m-%d")
         end_date = ticker_data.index[-1].strftime("%Y-%m-%d")
@@ -90,7 +90,7 @@ def select_universe(
         'full_start_date': full_start_date,
         'full_end_date': full_end_date,
         'selection_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'data_days': {ticker: len(data_manager.prices[ticker]) for ticker in selected_tickers},
+        'data_days': {ticker: len(data_manager.price_data[ticker]) for ticker in selected_tickers},
         'config': {
             'min_data_days': 60,
             'selection_method': 'KOSPI 시가총액 상위 + 전체 기간 결측치 없음'
