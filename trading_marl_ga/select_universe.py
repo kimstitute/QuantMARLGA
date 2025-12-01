@@ -20,7 +20,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from trading_marl_ga.data.market_data_manager import MarketDataManager
-from trading_marl_ga import config
+from trading_marl_ga.config import config  # Config 인스턴스 직접 import
 
 
 def select_universe(
