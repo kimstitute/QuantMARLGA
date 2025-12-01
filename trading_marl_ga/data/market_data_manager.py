@@ -85,7 +85,7 @@ class MarketDataManager:
         else:
             # 시가총액 상위 종목 선택 (학습 시)
             print(f"[INFO] 시가총액 상위 종목 자동 선택")
-        candidate_tickers = self.price_collector.get_kospi_top_tickers(n_stocks * 2)
+            candidate_tickers = self.price_collector.get_kospi_top_tickers(n_stocks * 2)
         
         # 2. 주가 데이터 수집 (lookback 포함)
         candidate_price_data = self.price_collector.get_price_data(
@@ -103,29 +103,42 @@ class MarketDataManager:
         valid_tickers = []
         valid_price_data = {}
         
-        print(f"\n[데이터 필터링] 최소 {min_data_days}일 이상 & {start_date} 이전부터 데이터 존재")
-        for ticker in candidate_tickers:
-            if ticker in candidate_price_data:
-                df = candidate_price_data[ticker]
-                data_len = len(df)
-                data_start = df.index[0]
-                
-                # 조건: 최소 일수 + start_date 이전부터 존재
-                if data_len >= min_data_days and data_start <= start_date_dt:
-                    valid_tickers.append(ticker)
-                    valid_price_data[ticker] = df
-                    if len(valid_tickers) >= n_stocks:
-                        break  # 필요한 개수만큼 확보하면 중단
-                else:
-                    skip_reason = []
-                    if data_len < min_data_days:
-                        skip_reason.append(f"데이터 부족 ({data_len}일 < {min_data_days}일)")
-                    if data_start > start_date_dt:
-                        skip_reason.append(f"늦은 시작 ({data_start.date()} > {start_date})")
-                    print(f"  [SKIP] {ticker}: {', '.join(skip_reason)}")
+        # 지정된 종목 리스트가 있으면 모두 사용 (이미 select_universe에서 검증됨)
+        target_count = len(candidate_tickers) if tickers is not None else n_stocks
+        skip_filtering = tickers is not None  # 지정된 종목은 필터링 건너뜀
         
-        if len(valid_tickers) < n_stocks:
-            print(f"[WARNING]  요청 종목 수({n_stocks}개)보다 적음 ({len(valid_tickers)}개만 확보)")
+        if skip_filtering:
+            print(f"\n[데이터 로드] 지정된 {len(candidate_tickers)}개 종목 사용 (필터링 생략)")
+            for ticker in candidate_tickers:
+                if ticker in candidate_price_data:
+                    valid_tickers.append(ticker)
+                    valid_price_data[ticker] = candidate_price_data[ticker]
+                else:
+                    print(f"  [WARNING] {ticker}: 데이터 수집 실패")
+        else:
+            print(f"\n[데이터 필터링] 최소 {min_data_days}일 이상 & {start_date} 이전부터 데이터 존재")
+            for ticker in candidate_tickers:
+                if ticker in candidate_price_data:
+                    df = candidate_price_data[ticker]
+                    data_len = len(df)
+                    data_start = df.index[0]
+                    
+                    # 조건: 최소 일수 + start_date 이전부터 존재
+                    if data_len >= min_data_days and data_start <= start_date_dt:
+                        valid_tickers.append(ticker)
+                        valid_price_data[ticker] = df
+                        if len(valid_tickers) >= target_count:
+                            break  # 필요한 개수만큼 확보하면 중단
+                    else:
+                        skip_reason = []
+                        if data_len < min_data_days:
+                            skip_reason.append(f"데이터 부족 ({data_len}일 < {min_data_days}일)")
+                        if data_start > start_date_dt:
+                            skip_reason.append(f"늦은 시작 ({data_start.date()} > {start_date})")
+                        print(f"  [SKIP] {ticker}: {', '.join(skip_reason)}")
+        
+        if len(valid_tickers) < target_count:
+            print(f"[WARNING]  요청 종목 수({target_count}개)보다 적음 ({len(valid_tickers)}개만 확보)")
         
         self.tickers = valid_tickers
         self.price_data = valid_price_data
