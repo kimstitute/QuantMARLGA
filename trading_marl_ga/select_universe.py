@@ -55,8 +55,8 @@ def select_universe(
     data_manager.initialize(
         start_date=full_start_date,
         end_date=full_end_date,
-        num_tickers=num_tickers * 2,  # 여유있게 2배 로드
-        min_data_days=60
+        n_stocks=num_tickers * 2,  # 여유있게 2배 로드
+        lookback_days=60  # 최소 60일 데이터 필요
     )
     
     # 선정된 종목 확인
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     selected_tickers = select_universe(
         full_start_date="2021-01-01",
         full_end_date="2024-12-31",
-        num_tickers=config.NUM_TICKERS,
+        num_tickers=config.N_STOCKS,  # N_STOCKS 사용
         output_path="data/selected_tickers.pkl"
     )
 
